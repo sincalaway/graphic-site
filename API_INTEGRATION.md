@@ -1,89 +1,44 @@
 # Graphic API 集成说明
 
-本项目的前端 API 边界由 `public/api-config.js` 和 `public/api-adapter.js` 提供。默认配置为 **demo 模式**：不发起网络请求、不需要密钥、不接入付费服务；`generate`、`edit`、`vectorize` 在该模式下会抛出 `API_NOT_CONFIGURED`，父页面应继续使用本地示例模板。
+本项目的 API 边界由 `public/api-config.js`、`public/api-contract.js` 和 `public/api-adapter.js` 提供。它是**本项目自有的前端契约**，不是原站后端文档：公开原站仅能证明存在智能/专家等档位元数据和生成客户端流程，无法证明具体供应商、模型、接口或成功推理结果。因此当前不声称接入 AI。
 
-## 配置位置
+## 默认状态
 
-在部署自己的后端时，只修改 `public/api-config.js` 中的配置（不要把密钥放进这里）：
+默认 `mode: 'demo'`，所有业务 endpoint、`provider`、`model` 均为空；不会发起网络请求、不读取密钥、不扣费。现有 `app.js` / `full-flow.js` 的本地模板流程保持不变，`GraphicAPI.generate/edit/vectorize` 在 demo 模式只返回 `API_NOT_CONFIGURED`，调用方继续走本地演示。
+
+配置示例（仅供未来自有同源后端使用，不能填供应商密钥）：
 
 ```js
 window.GRAPHIC_API_CONFIG = {
-  mode: 'demo', // 只有明确部署后端后才改为 'remote'
-  baseUrl: '',  // 必须是本站相对路径，例如 /api
-  timeoutMs: 30000,
-  endpoints: {
-    generate: '',
-    edit: '',
-    vectorize: '',
-    session: '',
-    works: '',
-    checkout: ''
-  }
+  mode: 'demo', provider: '', model: '', baseUrl: '', timeoutMs: 30000,
+  endpoints: { generate: '', edit: '', vectorize: '', session: '', works: '', checkout: '', task: '' },
+  options: { intelligence: [
+    { id: 'fast', label: '快捷' }, { id: 'smart', label: '智能' }, { id: 'pro', label: '专家' }
+  ] }
 };
 ```
 
-`remote` 模式的 `baseUrl` 和 endpoint 必须是本站同源相对路径；不接受 `http://`、`https://`、`//host` 或反斜杠路径。适配器使用 `same-origin` 凭据、超时和 `AbortSignal` 取消请求，并把网络、取消、HTTP 和响应格式错误统一成带 `code` 的 `GraphicAPIError`。
+## 契约与调用兼容性
 
-## 前端调用方式（给 `app.js`）
+`GraphicAPI.buildRequest(input)` 继续保留既有字段：`tool`、`brand`、`concept`、`style`、`styleIndex`、`color`、`subtitle`、`description`、`references`、`sourceImage`、`platform`、`scene`、`intelligence`、`count`；未知字段会丢弃。`full-flow.js` 的 UI 工具名 `vectorizer` 会在传输契约中兼容映射为 `vectorize`；`references` 必须是最多 5 项的 png/jpeg/webp/gif/avif Base64 Data URL 数组（前端本地引用图正是此格式）。显式远程调用时，契约会校验工具枚举、文本长度/控制字符、`count`（1–10）、`styleIndex`（0–9）、档位、参考图数量和本站图像格式。
 
-```js
-var request = {
-  tool: 'generate',
-  brand: '示例品牌',
-  concept: '简洁、可靠',
-  style: 'modern',
-  color: '#111827',
-  subtitle: '',
-  description: '一个抽象的字母标志',
-  references: [],
-  sourceImage: '',
-  platform: 'web',
-  scene: 'brand',
-  intelligence: 'balanced',
-  count: 4
-};
-
-try {
-  var result = await window.GraphicAPI.generate(request, { signal: controller.signal });
-  // result.items: [{ id, imageUrl, name }]
-} catch (error) {
-  if (error.code === 'API_NOT_CONFIGURED') {
-    // demo 模式：渲染 app.js 自己的本地模板，不显示网络失败
-  } else if (error.code === 'REQUEST_CANCELLED') {
-    // 用户主动取消或超时
-  } else {
-    // 展示统一的 error.message
-  }
-}
-```
-
-同样地，调用 `GraphicAPI.edit(input, { signal })` 或 `GraphicAPI.vectorize(input, { signal })`。`GraphicAPI.buildRequest(input)` 会保留以下契约字段：`tool`、`brand`、`concept`、`style`、`color`、`subtitle`、`description`、`references`、`sourceImage`、`platform`、`scene`、`intelligence`、`count`。`GraphicAPI.status()` 返回 `{ mode, configured, demo }`。
-
-## 前后端契约
-
-请求为 `POST` JSON，响应必须为：
+远端请求为 `POST` JSON，响应契约为：
 
 ```json
-{
-  "items": [
-    { "id": "logo-1", "imageUrl": "/assets/logo-1.png", "name": "方案一" }
-  ]
-}
+{ "items": [{ "id": "logo-1", "imageUrl": "/assets/logo-1.png", "name": "方案一" }] }
 ```
 
-`items` 中每个对象的 `id` 和 `name` 必须是字符串。`imageUrl` 只接受：
+仅接受本站同源栅格图片路径或 png/jpeg/webp/gif/avif Data URL；拒绝 SVG、外链、协议相对 URL 和不安全路径。前端渲染仍应使用安全的 `img.src`，不要把服务端值拼入 HTML。
 
-- `data:image/png|jpeg|webp|gif|avif;base64,...` 栅格图 Data URL；或
-- 以 `/` 开头、指向本站栅格图片文件的相对路径（`.png`、`.jpg`、`.jpeg`、`.webp`、`.gif`、`.avif`）。
+## 传输安全
 
-适配器拒绝 SVG、远端 URL、协议相对 URL、原始 HTML 和不符合契约的响应，避免将不可信内容作为图像或 HTML 注入页面。前端渲染仍应使用 `img.src`，不要使用 `innerHTML` 拼接服务端返回值。
+- `baseUrl` 与 endpoint 必须是无查询/片段、无反斜杠、无协议、无协议相对形式、无 `.`/`..` 路径段的本站绝对路径；只允许 ASCII 字母、数字、`/`、`.`、`_`、`-`、`~`，因此拒绝所有 `%` 编码（包括 `%2e%2e` 与双编码）及其他非安全路径字符。每个操作单独校验，不能用 generate 的配置冒充其他操作。
+- 使用 `credentials: 'same-origin'`、`redirect: 'error'`、超时和外部 `AbortSignal`；超时为 `REQUEST_TIMEOUT`，主动取消为 `REQUEST_CANCELLED`。
+- HTTP 状态先于 JSON 解析处理（错误响应 JSON 仅作可选错误信息）；成功响应再严格校验 JSON。网络失败、HTTP 错误和响应格式错误均返回带 `code` 的 `GraphicAPIError`。
+- 不自动重试，尤其不重试可能计费的生成、编辑和矢量化请求。密钥只能存自有后端环境变量。
 
-## 安全与预留范围
+## 只读预留范围
 
-- **鉴权密钥只存后端**：浏览器端配置和请求中不得放 API key、私钥或供应商密钥。后端负责会话、鉴权、限流、供应商调用和日志脱敏。
-- `session`、`works`、`checkout` endpoint 仅作为未来契约预留，本次不实现账号、登录、作品云端同步或支付流程。
-- 本次不连接任何真实远端，也不测试真实远端；切换到 `remote` 前应由项目维护者提供同源后端并完成安全审查。
+`GraphicAPI.options()` 只读返回 UI 档位元数据，不证明模型存在或已接入。`GraphicAPI.taskQuery(input)` 只校验未来任务查询输入（`taskId`、`cursor`、`limit`），不发请求、不实现轮询，也不猜测原站任务 schema。`session`、`works`、`checkout` 和 `task` endpoint 仅为空配置预留，本次不实现账号、作品同步、支付或真实任务服务。
 
-## 默认模板与真实 AI 的区别
-
-默认模板是前端本地示例数据，用于无网络、无付费、无密钥演示；它不代表真实模型生成能力，也不会调用 AI 服务。真实 AI 模式需要后端实现上述请求/响应契约，承担模型调用、鉴权、费用、配额、内容安全和错误处理。前端适配器只负责安全地传输契约数据和校验返回的栅格图结果，不承诺或模拟真实 AI 质量。
+切换到 `remote` 前，项目维护者必须提供并审查自己的同源后端、鉴权、限流、费用、内容安全和响应实现；本项目不会据此宣称任何真实模型推理成功。

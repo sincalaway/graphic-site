@@ -23,7 +23,9 @@ Graphic 是一个**纯前端、本地演示**网站。默认首页进入 Logo �
 
 ## API 预留
 
-`public/api-config.js` 默认 `mode: 'demo'`，所有 endpoint 默认空，不发起网络请求。`public/api-adapter.js` 为安全同源适配器，未来可在同源后端实现 `generate`、`edit`、`vectorize`；它会限制相对路径、使用 same-origin 凭据并校验响应。完整字段、请求/响应格式和安全边界见 **[API_INTEGRATION.md](./API_INTEGRATION.md)**。不要把 API key 或供应商密钥放进静态页面。
+`public/api-config.js` 默认 `mode: 'demo'`，真实 API、供应商、模型与所有 endpoint 均为空，不发起网络请求。`public/api-contract.js` 负责自有请求/响应契约，`public/api-adapter.js` 负责同源传输、逐操作配置检查、超时/取消和错误归一化；不会自动重试可能计费的请求。只读 `options()` 和 `taskQuery()` 仅返回本地元数据/校验输入，不请求原站或真实服务。完整字段和安全边界见 **[API_INTEGRATION.md](./API_INTEGRATION.md)**。不要把 API key 或供应商密钥放进静态页面。
+
+原站公开资源的 REA 分析见 **[公开证据摘要](./docs/REA_EVIDENCE.md)**：可确认档位配置和客户端流程，无法确认私有服务端实现、具体模型或成功推理。智能/专家是产品档位，不是模型名；本项目的契约也不是原站后端协议。
 
 ## 以后主要改这一个文件
 
@@ -59,6 +61,7 @@ graphic-site/
 │   ├── sketch-pad.js         # 手稿 canvas 与撤销/重做
 │   ├── sketch-pad.css        # 手稿绘图样式
 │   ├── api-config.js         # 默认空 endpoint / demo 配置
+│   ├── api-contract.js       # 自有输入/响应与任务查询校验
 │   ├── api-adapter.js        # 同源 API 安全适配器
 │   ├── app.js                # 原有本地模板生成器
 │   ├── references.js         # 原有参考图模块
@@ -76,6 +79,10 @@ graphic-site/
 
 ```bash
 node scripts/check-catalog.cjs
+node scripts/test-api.cjs
+# 另开终端运行静态服务器后，可选执行完整浏览器回归：
+# python3 -m http.server 4206 --directory public
+# python3 scripts/test-flow.py  # 需要 Playwright + Chromium
 ```
 
 通过检查后，按 [部署说明](./DEPLOY_CLOUDFLARE.md) 发布。GitHub 提交不等于临时预览自动更新。

@@ -12,6 +12,7 @@
 
 ```bash
 node scripts/check-catalog.cjs
+node scripts/test-api.cjs
 python3 -m http.server 8000 --directory public
 ```
 
@@ -31,12 +32,12 @@ python3 -m http.server 8000 --directory public
 
 保存并部署。之后修改 `public/` 并提交到 `main`，若平台启用了自动部署，即可更新正式站点。参考：[静态 HTML](https://developers.cloudflare.com/pages/framework-guides/deploy-anything/)、[Git 集成](https://developers.cloudflare.com/pages/get-started/git-integration/)、[构建配置](https://developers.cloudflare.com/pages/configuration/build-configuration/)。
 
-## 当前临时预览
+## 当前 API 优化版临时预览
 
-临时预览名称固定为 `graphic-full-flow`，仅上传 `public/`，使用以下命令（日期按发布当天填写；本次要求的日期为 `2026-10-18`）：
+临时预览名称固定为 `graphic-api-optimized`，仅上传 `public/`，使用以下命令（日期按发布当天填写；本次要求的日期为 `2026-10-19`）：
 
 ```bash
-npx --yes wrangler@4.102.0 deploy --temporary --name graphic-full-flow --compatibility-date 2026-10-18 --assets /绝对路径/graphic-site/public
+npx --yes wrangler@4.102.0 deploy --temporary --name graphic-api-optimized --compatibility-date 2026-10-19 --assets /绝对路径/graphic-site/public
 ```
 
 建议在隔离的 HOME/XDG 目录中运行，并从该进程环境清除 Cloudflare 变量，避免使用或改变已有登录状态；这不会影响已有 Cloudflare 登录：
@@ -44,8 +45,8 @@ npx --yes wrangler@4.102.0 deploy --temporary --name graphic-full-flow --compati
 ```bash
 TMP_HOME="$(mktemp -d)"
 env -i HOME="$TMP_HOME" XDG_CONFIG_HOME="$TMP_HOME/.config" PATH="$PATH" \
-  npx --yes wrangler@4.102.0 deploy --temporary --name graphic-full-flow \
-  --compatibility-date 2026-10-18 --assets /绝对路径/graphic-site/public
+  npx --yes wrangler@4.102.0 deploy --temporary --name graphic-api-optimized \
+  --compatibility-date 2026-10-19 --assets /绝对路径/graphic-site/public
 rm -rf "$TMP_HOME"
 ```
 
@@ -55,7 +56,7 @@ rm -rf "$TMP_HOME"
 
 ## 直接上传（已有 Pages 项目）
 
-如果要更新已有的 Cloudflare Pages 项目，可只上传 `public/` 内容；旧项目名和正式站点配置由项目维护者自行确认。临时部署命令中的 `graphic-full-flow` 不会替换或覆盖旧 URL。
+如果要更新已有的 Cloudflare Pages 项目，可只上传 `public/` 内容；旧项目名和正式站点配置由项目维护者自行确认。临时部署命令中的 `graphic-api-optimized` 不会替换或覆盖旧 URL。
 
 ## 常见问题
 
@@ -72,3 +73,9 @@ rm -rf "$TMP_HOME"
 **网站是否私密？** 不是。私有仓库只限制源码访问，发布后的文件任何持有公开链接的人都可查看。不要发布敏感内容。
 
 源码仓库：<https://github.com/sincalaway/graphic-site>（私有，需要授权）。
+
+## 本次仓库核实
+
+本地 `origin` 与已授权 GitHub 账号均为 `sincalaway/graphic-site`，仓库为私有，账号有 ADMIN 权限。用户已进一步确认 `sincalaway/graphic-site` 为正确仓库；最初的 `sincalwow/graphic-site` 是过期错误路径。本次仅更新已确认的现有远端，不创建或更换仓库。
+
+REA 结论见 [公开证据摘要](docs/REA_EVIDENCE.md)。仅发布 `public/`，不得发布 REA 原始证据、分析文档、测试脚本、部署日志或 claim 链接。
