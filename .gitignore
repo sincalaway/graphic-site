@@ -1,0 +1,20 @@
+# 本地环境与密钥
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# 依赖、构建缓存及部署工具本地数据
+node_modules/
+.wrangler/
+.dev.vars
+.dev.vars.*
+
+# 系统与编辑器文件
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log
+__pycache__/
