@@ -1,9 +1,7 @@
 /*
- * API 接入检查：本项目未接入大模型或其他远程业务 API，不读取 API key。
- * 本地生成入口：下方 #generate 点击处理器；SVG 模板实现：makeSVG()。
- * 上传图片通过 FileReader 在本地读取，作品仅存于当前浏览器 localStorage。
- * 若后续接入模型，应由后端读取环境变量 MODEL_API_KEY，再由前端调用后端接口；
- * 禁止将真实密钥硬编码在本文件、HTML、静态资源或任何公开的前端环境变量中。
+ * Default is local demo. full-flow.js connects generation/editing through GraphicAPI.
+ * Personal API settings live only in browser sessionStorage; never hard-code keys.
+ * For server-managed credentials, use a trusted backend instead of static files.
  */
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
 const icons={spark:'<path d="m12 3 2.2 6.8L21 12l-6.8 2.2L12 21l-2.2-6.8L3 12l6.8-2.2L12 3Z"/><path d="M20 2v4m-2-2h4M4 18v4m-2-2h4"/>',moon:'<path d="M20.5 13a8.5 8.5 0 1 1-9.4-9.4A6.5 6.5 0 0 0 20.5 13Z"/>',sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/>',works:'<rect x="7" y="5" width="13" height="14" rx="2"/><path d="M7 8H4v8h3m5-7h4m-4 4h4"/>',upload:'<rect x="3" y="5" width="15" height="16" rx="2"/><path d="m3 17 5-5 4 4 3-3 3 3m0-16v6m-3-3h6"/><circle cx="8" cy="9" r="1"/>'};

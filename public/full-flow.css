@@ -8,3 +8,5 @@
 @media(prefers-reduced-motion:reduce){.job-orbit,.job-progress i{animation:none}.app-template:hover{transform:none}}
 
 .reference-option input[type=checkbox]{width:15px!important;height:15px;padding:0!important} @media(min-width:768px){#studio-view{min-height:calc(100dvh - var(--header-height) - var(--banner-height) - 64px)}}
+/* Personal API configuration reuses the existing dialog and form palette. */
+#api-settings-form{min-width:0}#api-settings-form .checkline{display:flex;align-items:flex-start;gap:9px;line-height:1.7;white-space:normal}#api-settings-form input[type=checkbox]{width:16px!important;flex:0 0 16px;margin-top:3px}.api-key-row{display:flex;align-items:center;gap:8px}.api-key-row input{min-width:0;flex:1}.api-key-row button{flex-shrink:0;margin-top:9px}.api-settings-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}.api-settings-error{color:#cf3757;font-size:12px;line-height:1.6}#api-settings-form .notice p{font-size:11px;line-height:1.8;margin:8px 0}#api-state{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#api-help{flex-shrink:0}#api-custom-paths[hidden]{display:none}#api-settings-form .required{color:#cf3757}

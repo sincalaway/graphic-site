@@ -1,4 +1,4 @@
-/* 参考图仅在本地处理；不上传、不调用 AI。 */
+/* 参考图在本地读取保存；仅启用真实 API 并生成时由适配层上传。 */
 const referenceStorageKey = 'graphic-reference-images-v1';
 let referenceBusy = false;
 let referencesSaved = true;
@@ -52,7 +52,7 @@ function renderReferences() {
       large.alt = img.alt;
       large.className = 'reference-large';
       const text = document.createElement('p');
-      text.textContent = '参考图仅保存在当前浏览器。本地模板可参考第一张图的主色，不会进行 AI 重绘。';
+      text.textContent = '参考图保存在当前浏览器。demo 仅参考主色；启用真实 API 并生成时会随请求上传，具体能力由服务商决定。';
       content.replaceChildren(large, text);
       $('#dialog').classList.remove('preview-dialog');
       $('#dialog').showModal();
