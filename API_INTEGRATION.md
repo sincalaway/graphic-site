@@ -101,13 +101,43 @@
 
 默认超时 180 秒。用户取消返回 `REQUEST_CANCELLED`，超时返回 `REQUEST_TIMEOUT`；网络错误、HTTP 错误、JSON/图片响应不合约均返回带 `code` 的 `GraphicAPIError`。不自动重试，因为一次请求就可能计费。
 
-## 6. 密钥与费用安全边界
+## 6. 通用失败提示与排查
+
+页面可通过 `GraphicAPI.errorInfo(e)` 将异常整理为安全的静态信息：
+
+```js
+{ title, message, hint, code, status }
+```
+
+其中 `title`、`message`、`hint`、`code` 都是安全静态文字，`status` 仅为 HTTP 整数或 `null`。兼容代码仍包括 `NETWORK_ERROR` 和 `HTTP_ERROR`；HTTP 细分使用 `e.details.status`（不从错误正文猜测），并在 `errorInfo` 结果中以 `status` 提供。还可能出现 `REQUEST_CANCELLED`、`REQUEST_TIMEOUT`、`INVALID_RESPONSE` 和 `IMAGE_FETCH_FAILED`。网络失败无法由浏览器可靠区分 CORS、DNS、TLS、离线或重定向，因此不要据提示断定具体根因。
+
+| 代码/状态 | 常见含义与先查事项 |
+|---|---|
+| `400` / `422` | 参数、字段、图片格式或模型能力不符合服务要求；核对请求契约、必填参数、`n`、`image[]` 和该模型支持的能力。不要猜测某个服务商的模型根因。 |
+| `401` / `403` | key 无效、认证方式不对、账号无权使用模型或来源未获允许；检查 key、权限、额度策略和 CORS。 |
+| `404` / `405` | 端点、路径、HTTP 方法或模型路由不对；确认 `baseUrl` 是 API 前缀而非完整 endpoint，并确认使用 `/images/generations` 或 `/images/edits`。 |
+| `408` / `504` | 客户端或网关超时；检查服务端记录和任务状态。 |
+| `413` | 图片或请求体过大；缩小图片或减少参考图。 |
+| `415` | Content-Type、multipart 协议或图片媒体类型不受支持；不要手工覆盖 multipart boundary。 |
+| `429` | 限流、并发限制或额度不足；检查服务商限额和账单。 |
+| `5xx` | 服务端或上游暂时失败；查看服务状态与服务端记录。 |
+| `NETWORK_ERROR` | 浏览器没有拿到可读取的网络响应；可能与 CORS、DNS、TLS、离线或重定向有关，但本项目不能区分。 |
+| `INVALID_RESPONSE` | HTTP 成功但 JSON 结构、`data`/`items` 或图片结果不符合契约。 |
+| `IMAGE_FETCH_FAILED` | `data[].url` 图片无法按 CORS/HTTPS 规则下载或无法转为受支持的栅格图。 |
+
+错误信息不会记录或暴露原始错误 body、请求 URL 或 key；不会自动重试，也不会自动回退到其他模型、端点或 demo。失败、超时和图片下载失败时，服务端可能已经完成生成并产生费用；手动重试前先查询服务端请求/任务记录和账单，避免重复提交。
+
+对于 `openai-images`，`baseUrl` 只填写 API 前缀（例如已包含 `/v1`），不要写完整 endpoint。该适配器只使用非 Chat/Responses/任务协议的 Images 路径：无源图时 `baseUrl + /images/generations`，有源图或参考图时 `baseUrl + /images/edits`；后者使用 multipart 的 `image[]`。请求中的 `n` 和图片字段必须由目标服务实际支持，项目不会据此推断或改写具体供应商模型能力。
+
+配置面板会随地址和路径输入显示最终 `POST` 路径；这是本地拼接预览，不是连通性或模型能力验证，不会请求服务。错误面板可直接打开“检查 API 配置”；“再次发送（可能计费）”只有主动点击才会重发。续改也使用相同的安全错误分类，不显示服务端原始正文。
+
+## 7. 密钥与费用安全边界
 
 浏览器直连时 key **不是服务端保密**：页面脚本、浏览器扩展和 XSS 都可能读取它。请使用低额度、短期 key，优先考虑自有后端代理，并确认供应商的额度与数据政策。绝不把 key 写进源文件、`public/`、作品数据、日志或 Git 仓库；不要在公共部署页输入长期高权限 key。
 
 配置确认勾选表示你知道：所选供应商会收到 key（若协议发送）、提示词、源图和参考图，首次生成/编辑可能产生费用。保存本身不测试、不收费；本项目没有真实 key，也不声称已经实际推理成功。自动化测试使用 mock 验证传输，不代表供应商联通。
 
-## 7. 保留的高级旧模式
+## 8. 保留的高级旧模式
 
 `public/api-config.js` 的静态 `mode: 'remote'` 与旧 `api-adapter.js` 同源路径配置仍保留，适合维护者连接自有同源后端；这是**高级兼容模式**，不是页面 UI 的首选，也不应把供应商 key 写入静态文件。`mode: 'demo'` 仍是默认值。
 
@@ -123,13 +153,15 @@ window.GRAPHIC_API_CONFIG = {
 
 `GraphicAPI.options()` 只返回本地档位元数据；`taskQuery()` 只校验输入，不请求、不轮询，也不猜测原站任务 schema。`session`、`works`、`checkout` 和 `task` 仍为空配置预留，不实现账号、作品同步、支付或真实任务服务。
 
-## 8. 检查命令
+## 9. 检查命令
 
 ```bash
 node scripts/check-catalog.cjs
 node scripts/test-api.cjs
 node scripts/test-api-settings.cjs
+node scripts/test-api-errors.cjs
 python3 scripts/test-api-ui.py
+python3 scripts/test-api-errors-ui.py
 ```
 
 这些检查覆盖本地设置、请求传输和安全边界；没有真实 key 时不会进行真实供应商调用。

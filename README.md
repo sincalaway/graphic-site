@@ -27,7 +27,7 @@ Graphic 是一个**纯前端、本地优先**的网站。默认进入 Logo 创�
 
 配置只放在当前标签页的 `sessionStorage`：刷新通常保留，关闭标签页通常清除；浏览器的“恢复标签页”或复制标签页可能恢复或复制会话数据，因此不要把它当作密钥保险箱。key 仍能被页面脚本、浏览器扩展或 XSS 读取。建议使用低额度、短期 key，或使用自己的后端代理；绝不要把 key 写入源文件、作品、日志或仓库。
 
-支持的协议、请求/响应 JSON、地址限制、CORS 和费用边界见 **[API_INTEGRATION.md](./API_INTEGRATION.md)**。没有真实 key，本项目不声称已完成真实推理；自动化测试只验证配置与传输行为。
+支持的协议、请求/响应 JSON、地址限制、CORS、错误诊断和费用边界见 **[API_INTEGRATION.md](./API_INTEGRATION.md)**。通用提示可由 `GraphicAPI.errorInfo(e)` 整理为 `title/message/hint/code/status`；不会暴露原始错误 body、URL 或 key，也不会自动重试或回退。没有真实 key，本项目不声称已完成真实推理；自动化测试只验证配置与传输行为。失败、超时或图片下载失败可能服务端已完成且收费，手动重试前先查服务端记录。
 
 ## 本地数据与演示边界
 
@@ -88,7 +88,9 @@ graphic-site/
 │   └── assets/                # 示例图标资源
 ├── scripts/check-catalog.cjs  # 配置、路径和资源检查
 ├── scripts/test-api-settings.cjs # API 配置设置测试
+├── scripts/test-api-errors.cjs # API 错误归一化测试
 ├── scripts/test-api-ui.py     # API UI/传输自动化测试
+├── scripts/test-api-errors-ui.py # API 错误提示 UI 测试
 ├── 添加分类与图标.md           # 分类扩展教程
 ├── API_INTEGRATION.md          # API 请求/响应契约
 ├── DEPLOY_CLOUDFLARE.md       # 发布说明
@@ -101,7 +103,9 @@ graphic-site/
 node scripts/check-catalog.cjs
 node scripts/test-api.cjs
 node scripts/test-api-settings.cjs
+node scripts/test-api-errors.cjs
 python3 scripts/test-api-ui.py
+python3 scripts/test-api-errors-ui.py
 # 另开终端运行静态服务器后，可选执行完整浏览器回归：
 # python3 -m http.server 4206 --directory public
 # python3 scripts/test-flow.py  # 需要 Playwright + Chromium
@@ -111,4 +115,4 @@ python3 scripts/test-api-ui.py
 
 ## 隐私与仓库
 
-发布后的 `public/` 文件可被持有公开链接的人查看；仓库私有不代表网站内容私有。不要把密钥、个人信息或无权公开的图标放进 `public/`。源码仓库：<https://github.com/sincalaway/graphic-site>（私有，需要授权）。本次变更仅涉及 GitHub 仓库文档，没有部署网站。
+发布后的 `public/` 文件可被持有公开链接的人查看；仓库私有不代表网站内容私有。不要把密钥、个人信息或无权公开的图标放进 `public/`。源码仓库：<https://github.com/sincalaway/graphic-site>（私有，需要授权）。部署状态以实际发布环境为准；发布或更新网站请按 [部署说明](./DEPLOY_CLOUDFLARE.md) 操作。

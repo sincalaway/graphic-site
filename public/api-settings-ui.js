@@ -63,6 +63,7 @@
       <p class="notice" id="api-protocol-note"></p>
       <label class="form-label">服务地址 / API 前缀 <span class="required">*</span><input id="api-base-url" type="url" placeholder="https://your-service.example/v1" spellcheck="false" maxlength="2000"></label>
       <p class="hint">填写服务商文档中的 API 前缀（需要 /v1 时请自行包含）。仅 HTTPS 或 localhost HTTP，不允许 URL 中包含密钥、账号、查询或片段。</p>
+      <p class="notice" id="api-request-preview" aria-live="polite" style="overflow-wrap:anywhere;white-space:pre-line"></p>
       <label class="form-label">模型 ID <span class="required">*</span><input id="api-model" placeholder="填写该服务支持的图像模型 ID" spellcheck="false" maxlength="200"></label>
       <label class="form-label" id="api-key-label">API key <span id="api-key-required">*</span><span class="api-key-row"><input id="api-key" type="password" autocomplete="new-password" spellcheck="false" placeholder="只保存在本标签页会话，不写入仓库" maxlength="4096"><button type="button" class="secondary" id="api-toggle-key" aria-label="显示 API key" aria-pressed="false">显示</button></span></label>
       <div id="api-custom-paths"><label class="form-label">生成路径（必填）<input id="api-generate-path" placeholder="/generate"></label><label class="form-label">续改路径（可选，空白表示不支持）<input id="api-edit-path" placeholder="/edit"></label><label class="form-label">转换路径（可选，空白表示不支持）<input id="api-vectorize-path" placeholder="留空则禁用远端转换"></label><p class="hint">均相对于上面的服务前缀；后端必须实现仓库 API_INTEGRATION.md 中的自有 JSON 契约。返回栅格图片，不等同于真正 SVG 路径。</p></div>
@@ -96,9 +97,32 @@
       q("#api-protocol-note").textContent = custom
         ? "支持 POST JSON 生成 / 续改 / 栅格转换；仅适用于实现 Graphic items 契约的后端，不是任意供应商通用协议。"
         : "支持 /images/generations（JSON）与 /images/edits（multipart image[]）。参考图和手稿通过 edits 发送。服务需支持模型、n 和对应图片字段；不支持 Chat、Responses、异步任务或矢量化。";
+      preview();
+    }
+    function preview() {
+      const out = q("#api-request-preview");
+      try {
+        const base = q("#api-base-url").value.trim();
+        const url = new URL(base);
+        if (url.username || url.password || url.search || url.hash ||
+            !/^https?:$/.test(url.protocol)) throw new Error("invalid");
+        const prefix = url.origin + url.pathname.replace(/\/$/, "");
+        const openai = q("#api-protocol").value === "openai-images";
+        const suffixes = openai ? ["/images/generations", "/images/edits"] :
+          [q("#api-generate-path").value.trim(), q("#api-edit-path").value.trim(), q("#api-vectorize-path").value.trim()].filter(Boolean);
+        if (suffixes.some(p => !/^\/[A-Za-z0-9._~/-]*$/.test(p))) throw new Error("invalid");
+        out.textContent = "最终请求路径（仅本地预览，未测试连接）：\n" +
+          suffixes.map(p => "POST " + prefix + p).join("\n") +
+          (openai ? "\n无图走 generations；带参考图或源图走 edits。" : "") +
+          (openai && /\/(?:images\/(?:generations|edits)|chat\/completions|responses)\/?$/.test(url.pathname) ?
+            "\n注意：这里应填写 API 前缀，不是完整接口路径。请按服务商文档修正，避免路径重复或协议不匹配。" : "");
+      } catch (_) {
+        out.textContent = "填写不含账号、密钥、查询或片段的有效服务地址后，可预览最终 POST 路径。保存不会测试连接。";
+      }
     }
     protocol();
     q("#api-protocol").onchange = protocol;
+    ["#api-base-url", "#api-generate-path", "#api-edit-path", "#api-vectorize-path"].forEach(id => q(id).addEventListener("input", preview));
     q("#api-toggle-key").onclick = () => {
       const show = q("#api-key").type === "password";
       q("#api-key").type = show ? "text" : "password";

@@ -34,10 +34,10 @@ python3 -m http.server 8000 --directory public
 
 ## 当前 API 优化版临时预览
 
-临时预览名称固定为 `graphic-api-optimized`，仅上传 `public/`，使用以下命令（日期按发布当天填写；本次要求的日期为 `2026-10-19`）：
+临时预览名称固定为 `graphic-api-errors`，仅上传 `public/`，使用以下命令（日期按发布当天填写；本次要求的日期为 `2026-10-19`）：
 
 ```bash
-npx --yes wrangler@4.102.0 deploy --temporary --name graphic-api-optimized --compatibility-date 2026-10-19 --assets /绝对路径/graphic-site/public
+npx --yes wrangler@4.102.0 deploy --temporary --name graphic-api-errors --compatibility-date 2026-10-19 --assets /绝对路径/graphic-site/public
 ```
 
 建议在隔离的 HOME/XDG 目录中运行，并从该进程环境清除 Cloudflare 变量，避免使用或改变已有登录状态；这不会影响已有 Cloudflare 登录：
@@ -45,7 +45,7 @@ npx --yes wrangler@4.102.0 deploy --temporary --name graphic-api-optimized --com
 ```bash
 TMP_HOME="$(mktemp -d)"
 env -i HOME="$TMP_HOME" XDG_CONFIG_HOME="$TMP_HOME/.config" PATH="$PATH" \
-  npx --yes wrangler@4.102.0 deploy --temporary --name graphic-api-optimized \
+  npx --yes wrangler@4.102.0 deploy --temporary --name graphic-api-errors \
   --compatibility-date 2026-10-19 --assets /绝对路径/graphic-site/public
 rm -rf "$TMP_HOME"
 ```
@@ -56,7 +56,7 @@ rm -rf "$TMP_HOME"
 
 ## 直接上传（已有 Pages 项目）
 
-如果要更新已有的 Cloudflare Pages 项目，可只上传 `public/` 内容；旧项目名和正式站点配置由项目维护者自行确认。临时部署命令中的 `graphic-api-optimized` 不会替换或覆盖旧 URL。
+如果要更新已有的 Cloudflare Pages 项目，可只上传 `public/` 内容；旧项目名和正式站点配置由项目维护者自行确认。临时部署命令中的 `graphic-api-errors` 不会替换或覆盖旧 URL。
 
 ## 常见问题
 

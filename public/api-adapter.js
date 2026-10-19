@@ -136,9 +136,52 @@
   function normalize(e, timedOut) {
     if (timedOut) return new ApiError("REQUEST_TIMEOUT", "API 请求超时");
     if (e instanceof ApiError) return e;
+    // ContractError is a different class; do not mislabel it as a network failure.
+    if (e && e.name === "GraphicAPIContractError" &&
+        ["INVALID_REQUEST", "INVALID_RESPONSE"].indexOf(e.code) >= 0)
+      return new ApiError(e.code, e.code === "INVALID_RESPONSE" ? "API 响应格式无效" : "请求参数无效");
     if (e && e.name === "AbortError")
       return new ApiError("REQUEST_CANCELLED", "请求已取消");
     return new ApiError("NETWORK_ERROR", "API 请求失败");
+  }
+  // Never render raw exceptions, response bodies, keys or request URLs as diagnostics.
+  function errorInfo(e) {
+    var messages = {
+      NETWORK_ERROR: ["无法连接 API", "浏览器未能读取 API 响应。", "可能涉及 CORS、离线、DNS/TLS 或重定向；浏览器无法仅凭此错误区分。检查网络，并让服务端允许本站 origin、POST/OPTIONS、Authorization 和 Content-Type；不要用 no-cors 绕过。"],
+      REQUEST_TIMEOUT: ["请求等待超时", "浏览器等待服务响应超时。", "个人 API 最长等待 180 秒。服务端可能仍在生成；先查服务商任务或用量记录，再决定是否重试。"],
+      REQUEST_CANCELLED: ["已停止等待", "浏览器请求已取消。", "这不保证服务端已取消任务或费用。"],
+      INVALID_REQUEST: ["请求参数无效", "输入未通过本地请求校验。", "检查图片格式、数量及必填内容；不会为此自动切换模型。"],
+      INVALID_RESPONSE: ["响应格式不兼容", "服务响应不是当前协议要求的有效图片结果。", "核对所选协议：Images 需要 data[].b64_json 或 data[].url；Graphic JSON 需要 items。HTML、Chat/Responses、异步任务 ID 或 SVG 不能作为这里的图片结果。"],
+      IMAGE_FETCH_FAILED: ["图片无法读取", "输入图片或 API 返回的图片无法下载或解码。", "检查图片地址是否有效、是否允许 CORS、是否为受支持的栅格图片且不超过 20 MB。若 API 已返回结果，生成可能已经完成并计费，不要直接重复生成。"],
+      API_CONFIG_INVALID: ["API 配置无效", "当前协议或操作配置不完整。", "打开 API 配置检查 HTTPS 地址、API 前缀、模型 ID 和操作路径。"],
+      API_NOT_CONFIGURED: ["尚未配置 API", "当前没有可用的真实 API 配置。", "检查 API 配置，或清除设置后使用本地 demo。"],
+      API_VECTORIZE_UNSUPPORTED: ["当前协议不支持转换", "OpenAI Images 不提供此处的矢量化操作。", "请使用实现 Graphic JSON 契约的后端，或切回本地 demo。"],
+      HTTP_ERROR: ["API 返回 HTTP 错误", "服务端拒绝或未能完成请求。", "核对 API 配置与服务商状态；这里不会显示服务端原始错误正文。"],
+      UNKNOWN_ERROR: ["暂时无法完成", "操作未完成，未保存新结果。", "请检查配置与输入；不能从现有信息确认原因。"]
+    };
+    var code = e && Object.prototype.hasOwnProperty.call(messages, e.code) ? e.code : "UNKNOWN_ERROR",
+      m = messages[code], status = e && e.details && e.details.status;
+    status = Number.isInteger(status) && status >= 100 && status <= 599 ? status : null;
+    if (code === "HTTP_ERROR" && status) {
+      if (status === 401 || status === 403)
+        m = ["认证或权限失败", "服务返回 HTTP " + status + "。", "在 API 配置中核对 key 是否有效，以及该账号对端点和模型是否有权限；也可能是服务商的访问策略。不要把 key 发到聊天或日志。"];
+      else if (status === 404 || status === 405)
+        m = ["端点或模型不可用", "服务返回 HTTP " + status + "。", "核对 API 前缀和最终 POST 路径（不要重复 /images/generations），并确认模型 ID 可用；无法仅凭状态确认是路径还是模型问题。"];
+      else if (status === 400 || status === 422)
+        m = ["参数或模型能力不兼容", "服务返回 HTTP " + status + "。", "按服务文档核对模型、n、图片数量与格式。带参考图会调用 Images edits（multipart image[]）；并非每个图像模型都支持编辑。"];
+      else if (status === 408 || status === 504)
+        m = ["服务端或网关超时", "服务返回 HTTP " + status + "。", "请求可能仍在服务端处理；先检查任务或用量记录，再决定是否重新发送。"];
+      else if (status === 413)
+        m = ["图片或请求过大", "服务返回 HTTP 413。", "压缩图片或减少参考图数量；服务商上限可能低于本地限制。"];
+      else if (status === 415)
+        m = ["请求格式不支持", "服务返回 HTTP 415。", "核对协议及 JSON / multipart 支持；Images edits 的 boundary 由浏览器生成。"];
+      else if (status === 429)
+        m = ["请求受限或额度不足", "服务返回 HTTP 429。", "检查服务商的限流和额度记录，按其要求等待或调整；不能仅凭 429 确认具体原因。"];
+      else if (status >= 500)
+        m = ["服务端暂时异常", "服务返回 HTTP " + status + "。", "查看服务商状态和请求记录；确认没有重复任务后再手动重试。"];
+      else m = [m[0], "服务返回 HTTP " + status + "。", m[2]];
+    }
+    return { title: m[0], message: m[1], hint: m[2], code: code, status: status };
   }
   function text(v) {
     return v === undefined || v === null ? "" : String(v);
@@ -320,9 +363,14 @@
           }
           if (!res || !res.ok)
             throw new ApiError("IMAGE_FETCH_FAILED", "API 返回图像无法读取");
-          item = Object.assign({}, item, {
-            imageUrl: await blobData(await res.blob()),
-          });
+          try {
+            item = Object.assign({}, item, {
+              imageUrl: await blobData(await res.blob()),
+            });
+          } catch (e) {
+            if (e && e.name === "AbortError") throw e;
+            throw new ApiError("IMAGE_FETCH_FAILED", "API 返回图像格式或大小无效");
+          }
         }
       }
       out.items.push(item);
@@ -357,6 +405,7 @@
       timedOut = true;
       if (controller) controller.abort();
     }, timeout);
+    var phase = "reference-image";
     try {
       var raw = contract.validateRequest(input);
       raw =
@@ -417,6 +466,7 @@
             : raw,
         );
       }
+      phase = "request";
       var response;
       try {
         response = await fetch(url, {
@@ -436,6 +486,7 @@
           "API 请求失败（HTTP " + ((response && response.status) || 0) + "）",
           { status: response && response.status },
         );
+      phase = "response";
       var result;
       try {
         result = await response.json();
@@ -444,6 +495,7 @@
         throw new ApiError("INVALID_RESPONSE", "API 未返回 JSON");
       }
       var parsed = isOpen ? parseOpenAI(result) : result;
+      phase = "result-image";
       parsed = await downloadItems(
         parsed,
         controller ? controller.signal : external,
@@ -456,12 +508,15 @@
         cancelled.name = "AbortError";
         throw cancelled;
       }
+      phase = "response";
       return contract.validateItems(
         parsed,
         global.location && global.location.origin,
       );
     } catch (e) {
-      throw normalize(e, timedOut);
+      var safe = normalize(e, timedOut);
+      safe.details = Object.assign({}, safe.details, { phase: phase });
+      throw safe;
     } finally {
       if (timer) clearTimeout(timer);
       if (external && external.removeEventListener)
@@ -469,6 +524,7 @@
     }
   }
   var api = {
+    errorInfo: errorInfo,
     status: function () {
       var c = cfg(),
         s = settings(),
