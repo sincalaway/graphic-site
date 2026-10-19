@@ -126,3 +126,5 @@ python3 scripts/test-api-errors-ui.py
 发布后的 `public/` 文件可被持有公开链接的人查看；仓库私有不代表网站内容私有。不要把密钥、个人信息或无权公开的图标放进 `public/`。源码仓库：<https://github.com/sincalaway/graphic-site>（私有，需要授权）。部署状态以实际发布环境为准；发布或更新网站请按 [部署说明](./DEPLOY_CLOUDFLARE.md) 操作。
 
 诊断离线回归：`node scripts/test-sensenova-models.cjs`；启动静态服务器后运行 `GRAPHIC_TEST_URL=http://127.0.0.1:4210/ python3 scripts/test-sensenova-diagnostics.py`。全部使用 mock，不读取真实 key 或连接供应商。
+
+本站同源代理请求使用 `credentials: same-origin`，让 Cloudflare 安全验证 cookie 能随本站请求发送；高级跨域直连仍使用 `omit`。Worker 仅显式转发 Authorization/Accept（图像请求另含必要 Content-Type），不向 SenseNova 转发浏览器 cookie。若 403 标记 `cf-mitigated: challenge` 或返回 HTML，UI 显示「本站前置安全验证」，不把它误判为上游拒绝，不显示原始正文。

@@ -16,7 +16,7 @@ with sync_playwright() as p:
     def mock(route):
         req = route.request
         calls.append({'url': req.url, 'method': req.method, 'headers': req.headers, 'body': req.post_data})
-        route.fulfill(status=scenario['status'], content_type='application/json', body=json.dumps(scenario['body']))
+        route.fulfill(status=scenario['status'], content_type='text/html' if scenario.get('edge') else 'application/json', body='<html>challenge</html>' if scenario.get('edge') else json.dumps(scenario['body']))
     page.route('**/api/sensenova/**', mock)
     page.goto(BASE)
     page.locator('#api-help').click()
@@ -44,6 +44,11 @@ with sync_playwright() as p:
         page.locator('#api-check-models').click()
         expect(page.locator('#api-models-result')).to_contain_text(expected)
         assert KEY not in page.locator('#api-models-result').inner_text()
+    scenario.update(status=403, body={'error': {'message': KEY}}, edge=True)
+    page.locator('#api-check-models').click()
+    expect(page.locator('#api-models-result')).to_contain_text('本站前置安全验证')
+    assert KEY not in page.locator('#api-models-result').inner_text()
+    scenario['edge'] = False
     assert all(call['method'] == 'GET' and call['url'].endswith('/models') for call in calls)
     page.locator('#api-enabled').check()
     page.locator('#api-consent').check()
@@ -54,7 +59,7 @@ with sync_playwright() as p:
         result = page.evaluate('GraphicAPI.generate({tool:"logo",count:1}).then(()=>null,e=>GraphicAPI.errorInfo(e))')
         assert result['code'] == mapped and result['status'] == 403
         assert KEY not in json.dumps(result)
-    assert len(calls) == 8, 'no implicit retries or save-time requests'
+    assert len(calls) == 9, 'no implicit retries or save-time requests'
     assert not errors, errors
     browser.close()
 print('SenseNova diagnostics offline UI passed: explicit GET, current form key, no persistence, model present/absent, static 403 mapping, no leaks/retries')

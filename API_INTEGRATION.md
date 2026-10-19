@@ -248,3 +248,5 @@ python3 scripts/test-api-errors-ui.py
 ```
 
 这些检查覆盖本地设置、请求传输和安全边界；没有真实 key 时不会进行真实供应商调用。
+
+本站同源代理请求使用 `credentials: same-origin`，让 Cloudflare 安全验证 cookie 能随本站请求发送；高级跨域直连仍使用 `omit`。Worker 仅显式转发 Authorization/Accept（图像请求另含必要 Content-Type），不向 SenseNova 转发浏览器 cookie。若 403 标记 `cf-mitigated: challenge` 或返回 HTML，UI 显示「本站前置安全验证」，不把它误判为上游拒绝，不显示原始正文。

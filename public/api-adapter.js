@@ -159,6 +159,7 @@
       API_VECTORIZE_UNSUPPORTED: ["当前协议不支持转换", "当前 Images 协议不提供此处的矢量化操作。", "请使用实现 Graphic JSON 契约的后端，或切回本地 demo。"],
       SENSENOVA_ORIGIN_NOT_ALLOWED: ["本站同源检查拒绝", "HTTP 403 · origin_not_allowed：请求未通过本站代理的来源检查，尚未转发上游。", "请直接打开当前测试站，避免嵌入其他站点；检查 Origin / Sec-Fetch-Site。此错误不能归因于 key。"],
       SENSENOVA_UPSTREAM_FORBIDDEN: ["SenseNova 上游拒绝", "HTTP 403 · upstream_error：本站代理已收到上游的拒绝响应。", "可先运行只读模型列表检查；列表可访问或包含模型不代表具有图片生成权限，也不能排除上游访问策略。不会自动重试。"],
+      SENSENOVA_EDGE_FORBIDDEN: ["本站前置安全验证", "HTTP 403 · 收到前置安全质询或 HTML，而非本站代理的 JSON 错误。", "请在当前浏览器直接打开测试站并完成安全验证，确认站点 cookie 可用后再手动检查。此响应不能认定为 SenseNova 或 key 拒绝。"],
       HTTP_ERROR: ["API 返回 HTTP 错误", "服务端拒绝或未能完成请求。", "核对 API 配置与服务商状态；这里不会显示服务端原始错误正文。"],
       UNKNOWN_ERROR: ["暂时无法完成", "操作未完成，未保存新结果。", "请检查配置与输入；不能从现有信息确认原因。"]
     };
@@ -482,7 +483,7 @@
       try {
         response = await fetch(url, {
           method: "POST",
-          credentials: selected.kind === "user" ? "omit" : "same-origin",
+          credentials: selected.kind === "user" && c.protocol !== "sensenova-proxy" ? "omit" : "same-origin",
           redirect: "error",
           headers: headers,
           body: body,
@@ -534,6 +535,9 @@
   async function httpFailure(response, proxy) {
     var status = response && response.status, code = "HTTP_ERROR";
     if (proxy && status === 403) {
+      if (response.headers && (response.headers.get("cf-mitigated") === "challenge" ||
+          /text\/html/i.test(response.headers.get("content-type") || "")))
+        return new ApiError("SENSENOVA_EDGE_FORBIDDEN", "本站前置安全验证（HTTP 403）", { status: 403 });
       try {
         var body = await response.json();
         if (body && body.error && body.error.code === "origin_not_allowed")
@@ -554,7 +558,7 @@
     try {
       var response = await fetch(global.location.origin + "/api/sensenova/models", {
         method: "GET", headers: { Accept: "application/json", Authorization: "Bearer " + key },
-        credentials: "omit", redirect: "error", cache: "no-store", signal: controller.signal,
+        credentials: "same-origin", redirect: "error", cache: "no-store", signal: controller.signal,
       });
       if (!response || !response.ok) throw await httpFailure(response, true);
       var body = await response.json();

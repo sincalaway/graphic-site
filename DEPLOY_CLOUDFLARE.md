@@ -101,3 +101,5 @@ wrangler deploy --temporary --assets ...
 ## 8. 重要限制
 
 SenseNova 专用模式在本项目限制 `n=1..4`（不是供应商能力承诺）；单图不超过 8 MiB、最多 6 张 PNG/JPEG/WebP，整个请求不超过 20 MiB。无重试、无重定向；取消或超时仍可能计费。站点默认仍是本地 demo，浏览器直连的 `graphic-json` 与 `openai-images` 资料保留且不应与专用模式混淆。
+
+本站同源代理请求使用 `credentials: same-origin`，让 Cloudflare 安全验证 cookie 能随本站请求发送；高级跨域直连仍使用 `omit`。Worker 仅显式转发 Authorization/Accept（图像请求另含必要 Content-Type），不向 SenseNova 转发浏览器 cookie。若 403 标记 `cf-mitigated: challenge` 或返回 HTML，UI 显示「本站前置安全验证」，不把它误判为上游拒绝，不显示原始正文。
