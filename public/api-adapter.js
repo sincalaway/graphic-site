@@ -89,7 +89,7 @@
   }
   function userConfigured(s, op) {
     if (!s || !s.enabled || !userBase(s.baseUrl) || !s.model) return false;
-    if (s.protocol === "openai-images")
+    if (["openai-images", "sensenova-proxy"].indexOf(s.protocol) >= 0)
       return op !== "vectorize" && (op === "generate" || op === "edit");
     return s.protocol === "graphic-json" && path(s[op + "Path"], false);
   }
@@ -97,10 +97,10 @@
     var s = settings();
     if (s && s.enabled) {
       if (!userConfigured(s, op)) {
-        if (s.protocol === "openai-images" && op === "vectorize")
+        if (["openai-images", "sensenova-proxy"].indexOf(s.protocol) >= 0 && op === "vectorize")
           throw new ApiError(
             "API_VECTORIZE_UNSUPPORTED",
-            "openai-images 不支持矢量化",
+            "当前 Images 协议不支持矢量化",
           );
         throw new ApiError("API_CONFIG_INVALID", "用户 API 设置无效");
       }
@@ -127,7 +127,8 @@
     return u.href;
   }
   function openaiUrl(s, suffix) {
-    var u = new URL(s.baseUrl);
+    var u = new URL(s.protocol === "sensenova-proxy"
+      ? global.location.origin + "/api/sensenova" : s.baseUrl);
     u.pathname = (u.pathname.replace(/\/$/, "") || "") + suffix;
     u.search = "";
     u.hash = "";
@@ -155,7 +156,7 @@
       IMAGE_FETCH_FAILED: ["图片无法读取", "输入图片或 API 返回的图片无法下载或解码。", "检查图片地址是否有效、是否允许 CORS、是否为受支持的栅格图片且不超过 20 MB。若 API 已返回结果，生成可能已经完成并计费，不要直接重复生成。"],
       API_CONFIG_INVALID: ["API 配置无效", "当前协议或操作配置不完整。", "打开 API 配置检查 HTTPS 地址、API 前缀、模型 ID 和操作路径。"],
       API_NOT_CONFIGURED: ["尚未配置 API", "当前没有可用的真实 API 配置。", "检查 API 配置，或清除设置后使用本地 demo。"],
-      API_VECTORIZE_UNSUPPORTED: ["当前协议不支持转换", "OpenAI Images 不提供此处的矢量化操作。", "请使用实现 Graphic JSON 契约的后端，或切回本地 demo。"],
+      API_VECTORIZE_UNSUPPORTED: ["当前协议不支持转换", "当前 Images 协议不提供此处的矢量化操作。", "请使用实现 Graphic JSON 契约的后端，或切回本地 demo。"],
       HTTP_ERROR: ["API 返回 HTTP 错误", "服务端拒绝或未能完成请求。", "核对 API 配置与服务商状态；这里不会显示服务端原始错误正文。"],
       UNKNOWN_ERROR: ["暂时无法完成", "操作未完成，未保存新结果。", "请检查配置与输入；不能从现有信息确认原因。"]
     };
@@ -416,10 +417,14 @@
       var url,
         headers = { Accept: "application/json" },
         body;
-      var isOpen = selected.kind === "user" && c.protocol === "openai-images",
+      var isOpen = selected.kind === "user" && ["openai-images", "sensenova-proxy"].indexOf(c.protocol) >= 0,
         p = isOpen ? openaiPayload(raw, c) : null;
       if (isOpen) {
+        if (c.protocol === "sensenova-proxy" && (p.payload.n < 1 || p.payload.n > 4))
+          throw new ApiError("INVALID_REQUEST", "SenseNova 同源代理每次仅支持 1–4 张");
         var hasImages = p.images.length;
+        if (c.protocol === "sensenova-proxy" && hasImages > 6)
+          throw new ApiError("INVALID_REQUEST", "SenseNova 同源代理最多支持 6 张输入图片");
         if (op === "edit" && !hasImages)
           throw new ApiError("INVALID_REQUEST", "编辑操作需要图片");
         url = openaiUrl(c, hasImages ? "/images/edits" : "/images/generations");
@@ -435,6 +440,10 @@
               bin = atob(parts[1]),
               arr = new Uint8Array(bin.length),
               k;
+            var mime = (parts[0].match(/^data:([^;]+)/i) || [])[1] || "image/png";
+            if (c.protocol === "sensenova-proxy" &&
+                (!/^image\/(png|jpeg|webp)$/i.test(mime) || arr.length > 8 * 1024 * 1024))
+              throw new ApiError("INVALID_REQUEST", "SenseNova 同源代理仅支持不超过 8 MiB 的 PNG/JPEG/WebP");
             for (k = 0; k < bin.length; k++) arr[k] = bin.charCodeAt(k);
             form.append(
               "image[]",
@@ -537,7 +546,7 @@
       var user = !!(
         s &&
         s.enabled &&
-        ["graphic-json", "openai-images"].indexOf(s.protocol) >= 0
+        ["graphic-json", "openai-images", "sensenova-proxy"].indexOf(s.protocol) >= 0
       );
       return {
         mode: user ? "remote" : c.mode === "remote" ? "remote" : "demo",

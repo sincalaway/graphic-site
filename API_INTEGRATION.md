@@ -1,8 +1,72 @@
 # Graphic API 集成说明
 
-本文档描述 Graphic 的**浏览器 API 配置 UI 优先**路径，以及仍保留的高级静态同源模式。它们都是本项目自己的适配边界，不是原站后端文档；公开资料无法证明具体供应商、模型、私有接口或成功推理结果。
+本文档描述 Graphic 新增的 **SenseNova 专用同源代理**、保留的浏览器直连配置，以及高级静态同源模式。它们都是本项目自己的适配边界，不是原站后端文档；原站公开资料不证明其具体供应商、模型或私有接口；这里的 SenseNova 集成是本项目的独立实现。
 
-## 1. 默认状态与 UI 入口
+## SenseNova 专用同源模式（`protocol='sensenova-proxy'`）
+
+### 安全边界与固定路由
+
+- 前端 `baseUrl` 运行时固定为 `location.origin + '/api/sensenova'`，请求只发到同源 Pages Function。
+- Function 仅转发至固定上游 `https://token.sensenova.cn/v1` 的两条路径：`/images/generations` 与 `/images/edits`；这不是可配置的通用代理。
+- key **只取用户当前页面输入**，保存在当前标签页 `sessionStorage`；不读取平台保存的 secret；刷新时可读取本页面输入并保存在 sessionStorage 的配置，不把 key 写入源码、URL、作品、服务器环境变量、日志或响应回显。
+- `Authorization: Bearer <key>` 透传到上游；不能把 key 放 query、路径或 JSON 字段。无服务器端 SenseNova secret 或 environment binding 需要。
+- 上游错误只允许向浏览器返回静态 `code` / `status` 分类；不得转发、记录或回显上游错误正文、key、请求体或完整 URL。
+- 禁止重定向，不自动重试。取消或超时只表示浏览器停止等待；上游可能仍在处理并计费。
+
+前端模式和受限 Function 已在仓库中实现；本次仅通过 mock / 离线测试验证，不发起真实生成或编辑，也不部署。此前单独生成测试成功不代表编辑、批量或其他参数已由供应商验证。
+
+### 来源、大小、超时和日志
+
+函数拒绝跨源 Origin 和跨站 / same-site Fetch Metadata，不发送开放 CORS 响应头。无 Origin 的非浏览器客户端可调用，但仍须提供自己的 Bearer key；来源校验不是用户鉴权，也不是限流。函数没有内置账号、WAF 或速率限制，公开部署建议由维护者配置平台访问/用量保护。仅允许 `model`、`prompt`、`n` 及编辑的 `image[]`；提示词最多 100,000 字符；重复 multipart 字段及未知字段拒绝。函数使用 120 秒上游超时，浏览器等待上限仍为 180 秒；取消尽力传递，不保证供应商撤销任务。
+
+应用代码没有 console 请求日志或存储绑定，不持久化请求/响应。维护者不要额外启用包含 Authorization 或正文的日志、抓包、Analytics 或中间件；平台和供应商自己的运行/计费元数据不由本项目控制。
+
+### 生成：JSON
+
+无参考图/源图时，前端向同源 Function 发：
+
+```http
+POST /api/sensenova/images/generations
+Content-Type: application/json
+Authorization: Bearer <当前页面输入的 key>
+```
+
+请求体为 SenseNova Images 生成所需 JSON，模型字段固定且不可由用户改写：
+
+```json
+{
+  "model": "sensenova-u1.5-lite",
+  "prompt": "几何、友好的环保品牌标志",
+  "n": 1
+}
+```
+
+项目映射的提示词/图片字段应以实际实现和上游契约为准；不要把本专用模式当成任意 OpenAI 供应商兼容层。
+
+### 编辑：multipart `image[]`
+
+有源图或参考图时，前端向同源 Function 发：
+
+```http
+POST /api/sensenova/images/edits
+Content-Type: multipart/form-data; boundary=（由浏览器自动生成）
+Authorization: Bearer <当前页面输入的 key>
+```
+
+图片字段名固定为 `image[]`，不要手工覆盖 multipart boundary。本项目单次请求限制为 `n=1..4`，这不是供应商批量能力承诺。请求限制为：单图不超过 **8 MiB**，单次最多 **6** 张，媒体类型仅 PNG/JPEG/WebP，整个请求不超过 **20 MiB**。Function 对实际读取的请求字节执行限制并验证字段；前端也会在超过张数范围时本地拒绝，不能据此声称上游已验证接受。
+
+### 返回与失败
+
+Function 最多读取 20 MiB 上游响应，只保留 `data[].b64_json` 或安全 HTTPS `data[].url`；前端只消费经过项目契约校验的栅格结果；接受经过白名单过滤的 Images `data` 结果；外链结果仍需图片主机允许浏览器 CORS，Function 不代取任意图片 URL。Function 对上游失败只返回静态分类，例如 HTTP 401 与 `{ "error": { "code": "upstream_error" } }`；status 由 HTTP 状态表示，不返回原始 body。页面错误展示也不得暴露 key、URL 或原始错误正文。
+
+失败、取消、超时或图片下载失败时，上游可能已完成并计费；不要立即盲目重试，先查服务端请求/账单记录。没有 key 时本项目不会进行真实调用。
+
+### 明确不支持
+
+`sensenova-proxy` 不支持 `vectorize`，不把矢量化伪装成生成或编辑；不支持任意上游路径、任意模型、任意 provider、重定向、重试、服务端保存 key、服务端日志、响应回显或服务器端 SenseNova secret binding。
+
+
+## 1. 浏览器直连模式：默认状态与 UI 入口
 
 默认模式为 `demo`，不发起网络请求。顶部状态栏 **“配置 API”** 和“更多”菜单的 **“API 接入状态”** 打开同一个面板。面板可填写：
 
@@ -135,7 +199,7 @@
 
 浏览器直连时 key **不是服务端保密**：页面脚本、浏览器扩展和 XSS 都可能读取它。请使用低额度、短期 key，优先考虑自有后端代理，并确认供应商的额度与数据政策。绝不把 key 写进源文件、`public/`、作品数据、日志或 Git 仓库；不要在公共部署页输入长期高权限 key。
 
-配置确认勾选表示你知道：所选供应商会收到 key（若协议发送）、提示词、源图和参考图，首次生成/编辑可能产生费用。保存本身不测试、不收费；本项目没有真实 key，也不声称已经实际推理成功。自动化测试使用 mock 验证传输，不代表供应商联通。
+配置确认勾选表示你知道：所选供应商会收到 key（若协议发送）、提示词、源图和参考图，首次生成/编辑可能产生费用。保存本身不测试、不收费；本次不读取或使用已保存的真实 key，也不进行真实调用。自动化测试使用 mock 验证传输，不代表供应商联通。
 
 ## 8. 保留的高级旧模式
 
@@ -160,6 +224,8 @@ node scripts/check-catalog.cjs
 node scripts/test-api.cjs
 node scripts/test-api-settings.cjs
 node scripts/test-api-errors.cjs
+node scripts/test-sensenova-proxy.cjs
+python3 scripts/test-sensenova-ui.py
 python3 scripts/test-api-ui.py
 python3 scripts/test-api-errors-ui.py
 ```

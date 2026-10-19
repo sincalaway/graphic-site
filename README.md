@@ -1,6 +1,6 @@
 # Graphic：全流程 Logo 创作与图标素材库
 
-Graphic 是一个**纯前端、本地优先**的网站。默认进入 Logo 创作，保留原有图标素材库、参考图和作品管理功能；默认使用本地 demo，不会自动调用模型、上传数据或扣费。现在也可以从页面配置受支持的真实 API，但这是浏览器直连：只有你明确保存配置并首次点击生成/编辑时才会发请求。
+Graphic 是一个**本地优先**的网站。默认进入 Logo 创作，保留原有图标素材库、参考图和作品管理功能；默认使用本地 demo，不会自动调用模型、上传数据或扣费。现在也可以从页面配置受支持的真实 API，支持 SenseNova 专用同源代理或高级浏览器直连：只有你明确保存配置并首次点击生成/编辑时才会发请求。
 
 ## 当前功能
 
@@ -19,15 +19,15 @@ Graphic 是一个**纯前端、本地优先**的网站。默认进入 Logo 创�
 
 顶部状态栏的 **“配置 API”**，以及“更多”菜单中的 **“API 接入状态”** 都会打开同一个配置面板。手机上按以下步骤操作：
 
-1. 打开 **配置 API**，选择协议，填写服务地址、模型和协议所需路径；`openai-images` 还必须填写 key。
-2. 阅读安全提示并勾选确认（只有随后点击生成/编辑，key、提示词和使用的图片才会发送给所选服务，可能计费）。
+1. 打开 **配置 API**，选择协议并填写协议所需字段：保留的 `graphic-json` / `openai-images` 仍是浏览器直连；新增的专用 `sensenova-proxy` 仅使用同源 `/api/sensenova`，模型固定为 `sensenova-u1.5-lite`，`baseUrl` 运行时固定为 `location.origin + '/api/sensenova'`，不可改成通用代理。
+2. 选择 `sensenova-proxy` 时，只在当前页面输入 SenseNova key；它仅放入当前标签页 `sessionStorage`，不读取平台保存的密钥；刷新时可读取本页会话配置。阅读安全提示并勾选确认（只有随后点击生成/编辑，key、提示词和使用的图片才会发送，可能计费）。
 3. 点 **保存配置**。这一步只做本地格式校验和保存，不测试、不收费、不发请求。
 4. 回到工具填写提示词/参考图，第一次点 **生成** 或 **编辑** 才会请求服务。失败不会默默回退 demo，也不会自动重试。
 5. 不再使用时点 **清除配置**；配置会清空并回到 demo。
 
 配置只放在当前标签页的 `sessionStorage`：刷新通常保留，关闭标签页通常清除；浏览器的“恢复标签页”或复制标签页可能恢复或复制会话数据，因此不要把它当作密钥保险箱。key 仍能被页面脚本、浏览器扩展或 XSS 读取。建议使用低额度、短期 key，或使用自己的后端代理；绝不要把 key 写入源文件、作品、日志或仓库。
 
-支持的协议、请求/响应 JSON、地址限制、CORS、错误诊断和费用边界见 **[API_INTEGRATION.md](./API_INTEGRATION.md)**。通用提示可由 `GraphicAPI.errorInfo(e)` 整理为 `title/message/hint/code/status`；不会暴露原始错误 body、URL 或 key，也不会自动重试或回退。没有真实 key，本项目不声称已完成真实推理；自动化测试只验证配置与传输行为。失败、超时或图片下载失败可能服务端已完成且收费，手动重试前先查服务端记录。
+支持的协议、SenseNova 专用请求/响应、地址限制、CORS、错误诊断和费用边界见 **[API_INTEGRATION.md](./API_INTEGRATION.md)**。当前仅保留原浏览器直连的 `graphic-json` / `openai-images` 与专用 `sensenova-proxy`；后者不是通用代理，不支持 `vectorize`。通用提示可由 `GraphicAPI.errorInfo(e)` 整理为 `title/message/hint/code/status`；不会暴露原始错误 body、URL 或 key，也不会自动重试或回退。本次不读取真实 key、不调用真实生成或编辑；自动化测试只验证配置与传输行为。失败、超时或图片下载失败可能服务端已完成且收费，手动重试前先查服务端记录。
 
 ## 本地数据与演示边界
 
@@ -39,7 +39,7 @@ Graphic 是一个**纯前端、本地优先**的网站。默认进入 Logo 创�
 
 仍保留 `public/api-config.js` 的旧静态**同源 `remote` 模式**，供高级用户接入自有后端；它与现在的页面配置 UI 是两条路径。旧模式中的密钥不应放进静态文件，UI 模式优先，详细区别和兼容字段见 API 文档。
 
-`public/api-config.js`、`public/api-contract.js` 和 `public/api-adapter.js` 负责配置、契约与传输；demo 默认不发网络请求。UI 支持 `graphic-json`（自有 POST JSON）与 `openai-images`（OpenAI 兼容 Images 协议，非任意供应商协议）。
+`public/api-config.js`、`public/api-contract.js` 和 `public/api-adapter.js` 负责配置、契约与传输；demo 默认不发网络请求。UI 支持 `sensenova-proxy`（固定目标的专用同源模式）、`graphic-json`（自有 POST JSON）与 `openai-images`（OpenAI 兼容 Images 协议，非任意供应商协议）。
 
 原站公开资源的 REA 分析见 **[公开证据摘要](./docs/REA_EVIDENCE.md)**：可确认档位配置和客户端流程，无法确认私有服务端实现、具体模型或成功推理。智能/专家是产品档位，不是模型名；本项目的契约也不是原站后端协议。
 
@@ -62,13 +62,13 @@ Graphic 是一个**纯前端、本地优先**的网站。默认进入 Logo 创�
 python3 -m http.server 8000 --directory public
 ```
 
-打开 <http://localhost:8000>，停止服务器按 `Ctrl+C`。发布时**只上传 `public/` 的内容**，不要上传整个仓库。若要浏览器直连真实服务，发布站点和服务端需按文档配置 HTTPS/CORS。
+打开 <http://localhost:8000>，停止服务器按 `Ctrl+C`。静态资源输出目录为 `public/`，不要公开整个仓库；使用同源模式时还必须从仓库根通过 Pages 编译并部署 `functions/`，不能仅上传静态文件。若要浏览器直连真实服务，发布站点和服务端需按文档配置 HTTPS/CORS。Cloudflare Pages Functions 的本地预览应使用 `npx wrangler pages dev public`；仅 `python3 -m http.server` 不能执行 Functions。
 
 ## 文件结构
 
 ```text
 graphic-site/
-├── public/                   # 唯一公开发布目录
+├── public/                   # 静态资源与 Pages 构建输出
 │   ├── index.html            # 页面结构（含 API 配置入口）
 │   ├── style.css             # 原有创作样式
 │   ├── catalog.css            # 素材库样式
@@ -86,6 +86,8 @@ graphic-site/
 │   ├── catalog.js             # 分类和图标配置
 │   ├── catalog-ui.js          # 素材库渲染、搜索和筛选
 │   └── assets/                # 示例图标资源
+├── lib/sensenova-proxy.mjs    # 受限转发与白名单校验
+├── functions/                # Cloudflare Pages Functions（仓库根目录，部署时不放入 public/）
 ├── scripts/check-catalog.cjs  # 配置、路径和资源检查
 ├── scripts/test-api-settings.cjs # API 配置设置测试
 ├── scripts/test-api-errors.cjs # API 错误归一化测试
@@ -104,6 +106,9 @@ node scripts/check-catalog.cjs
 node scripts/test-api.cjs
 node scripts/test-api-settings.cjs
 node scripts/test-api-errors.cjs
+node scripts/test-sensenova-proxy.cjs
+# 以下浏览器测试需先启动静态服务器（默认 4206 端口）
+python3 scripts/test-sensenova-ui.py
 python3 scripts/test-api-ui.py
 python3 scripts/test-api-errors-ui.py
 # 另开终端运行静态服务器后，可选执行完整浏览器回归：

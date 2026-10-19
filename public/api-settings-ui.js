@@ -56,10 +56,10 @@
   }
   function open() {
     const c = GraphicAPISettings.get();
-    dialog(`<p class="flow-kicker">YOUR API / YOUR CHOICE</p><h2>接入你的生成服务</h2><p class="hint">不预设服务商或模型。保存仅校验配置，不发请求；点击生成才会使用 API。</p>
+    dialog(`<p class="flow-kicker">YOUR API / YOUR CHOICE</p><h2>接入你的生成服务</h2><p class="hint">可选 SenseNova 专用同源代理，或高级浏览器直连。保存仅校验配置，不发请求；点击生成才会使用 API。</p>
       <form id="api-settings-form" autocomplete="off">
       <label class="checkline"><input type="checkbox" id="api-enabled" ${c.enabled ? "checked" : ""}>启用真实 API（关闭则使用 demo）</label>
-      <label class="form-label">协议 <span class="required">*</span><select id="api-protocol"><option value="openai-images">OpenAI 兼容 Images（非 Chat / Responses）</option><option value="graphic-json">Graphic 自有 JSON 契约</option></select></label>
+      <label class="form-label">协议 <span class="required">*</span><select id="api-protocol"><option value="sensenova-proxy">SenseNova · 本站同源代理（推荐）</option><option value="openai-images">OpenAI 兼容 Images（非 Chat / Responses）</option><option value="graphic-json">Graphic 自有 JSON 契约</option></select></label>
       <p class="notice" id="api-protocol-note"></p>
       <label class="form-label">服务地址 / API 前缀 <span class="required">*</span><input id="api-base-url" type="url" placeholder="https://your-service.example/v1" spellcheck="false" maxlength="2000"></label>
       <p class="hint">填写服务商文档中的 API 前缀（需要 /v1 时请自行包含）。仅 HTTPS 或 localhost HTTP，不允许 URL 中包含密钥、账号、查询或片段。</p>
@@ -67,7 +67,7 @@
       <label class="form-label">模型 ID <span class="required">*</span><input id="api-model" placeholder="填写该服务支持的图像模型 ID" spellcheck="false" maxlength="200"></label>
       <label class="form-label" id="api-key-label">API key <span id="api-key-required">*</span><span class="api-key-row"><input id="api-key" type="password" autocomplete="new-password" spellcheck="false" placeholder="只保存在本标签页会话，不写入仓库" maxlength="4096"><button type="button" class="secondary" id="api-toggle-key" aria-label="显示 API key" aria-pressed="false">显示</button></span></label>
       <div id="api-custom-paths"><label class="form-label">生成路径（必填）<input id="api-generate-path" placeholder="/generate"></label><label class="form-label">续改路径（可选，空白表示不支持）<input id="api-edit-path" placeholder="/edit"></label><label class="form-label">转换路径（可选，空白表示不支持）<input id="api-vectorize-path" placeholder="留空则禁用远端转换"></label><p class="hint">均相对于上面的服务前缀；后端必须实现仓库 API_INTEGRATION.md 中的自有 JSON 契约。返回栅格图片，不等同于真正 SVG 路径。</p></div>
-      <div class="notice"><b>浏览器端安全边界</b><p>API key 会通过 Authorization: Bearer 发给你填写的服务地址。提示词、品牌信息及使用的参考图 / 手稿 / 源图也会发送给该服务，可能产生费用。请核对域名与隐私政策。</p><p>配置仅存 sessionStorage（本标签页会话，刷新保留；浏览器恢复或复制标签页可能保留）。页面脚本、扩展或 XSS 可以读取 key，这不是服务器端保密。建议使用低额度临时 key，或自己的后端代理；不要在共享设备上保留。</p><p>跨域服务与返回的图片地址必须允许浏览器 CORS。保存不测试连通性，不验证额度。生成失败不自动重试、不静默退回 demo。</p></div>
+      <div class="notice"><b>浏览器端安全边界</b><p>SenseNova 同源模式下，API key 会通过 Authorization: Bearer 发给本站函数，再由函数固定透传至 token.sensenova.cn；本站函数不保存密钥、不记录请求内容，也不回显密钥。高级直连模式则发给填写的服务地址。提示词、品牌信息及使用的参考图 / 手稿 / 源图也会发送给该服务，可能产生费用。请核对域名与隐私政策。</p><p>配置仅存 sessionStorage（本标签页会话，刷新保留；浏览器恢复或复制标签页可能保留）。页面脚本、扩展或 XSS 可以读取 key，这不是服务器端保密。建议使用低额度临时 key，或自己的后端代理；不要在共享设备上保留。</p><p>同源代理不需要供应商为 API 请求开放浏览器 CORS；返回的外链图片仍需允许 CORS，代理不会代取任意图片 URL。高级直连服务也需允许 CORS。保存不测试连通性，不验证额度。生成失败不自动重试、不静默退回 demo。</p></div>
       <label class="checkline"><input type="checkbox" id="api-consent">我了解 key 与输入内容会发给所选服务，并确认该地址可信、可能计费。</label>
       <p id="api-settings-error" role="alert" class="api-settings-error"></p><div class="api-settings-actions"><button type="submit" class="login-btn">保存设置</button><button type="button" id="api-clear" class="secondary">清除配置并使用 demo</button></div></form>`);
     q("#api-protocol").value = c.protocol || "openai-images";
@@ -90,11 +90,20 @@
     });
     function protocol() {
       const custom = q("#api-protocol").value === "graphic-json";
+      const proxy = q("#api-protocol").value === "sensenova-proxy";
+      q("#api-base-url").readOnly = proxy;
+      q("#api-model").readOnly = proxy;
+      if (proxy) {
+        q("#api-base-url").value = location.origin + "/api/sensenova";
+        q("#api-model").value = "sensenova-u1.5-lite";
+      }
       q("#api-custom-paths").hidden = !custom;
       q("#api-key-required").textContent = custom
         ? "（可选：仅限无需 Bearer 的自有服务）"
         : "*";
-      q("#api-protocol-note").textContent = custom
+      q("#api-protocol-note").textContent = proxy
+        ? "固定转发至 https://token.sensenova.cn/v1 的 generations / edits；不支持自定义目标、模型或矢量化。每次 1–4 张，请求最多 20 MiB；PNG/JPEG/WebP 单图最多 8 MiB，最多 6 图。需要已部署 Pages Functions；保存不会验证部署或编辑能力。"
+        : custom
         ? "支持 POST JSON 生成 / 续改 / 栅格转换；仅适用于实现 Graphic items 契约的后端，不是任意供应商通用协议。"
         : "支持 /images/generations（JSON）与 /images/edits（multipart image[]）。参考图和手稿通过 edits 发送。服务需支持模型、n 和对应图片字段；不支持 Chat、Responses、异步任务或矢量化。";
       preview();
@@ -107,7 +116,7 @@
         if (url.username || url.password || url.search || url.hash ||
             !/^https?:$/.test(url.protocol)) throw new Error("invalid");
         const prefix = url.origin + url.pathname.replace(/\/$/, "");
-        const openai = q("#api-protocol").value === "openai-images";
+        const openai = ["openai-images", "sensenova-proxy"].includes(q("#api-protocol").value);
         const suffixes = openai ? ["/images/generations", "/images/edits"] :
           [q("#api-generate-path").value.trim(), q("#api-edit-path").value.trim(), q("#api-vectorize-path").value.trim()].filter(Boolean);
         if (suffixes.some(p => !/^\/[A-Za-z0-9._~/-]*$/.test(p))) throw new Error("invalid");

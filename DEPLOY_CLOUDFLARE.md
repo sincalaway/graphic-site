@@ -1,81 +1,95 @@
-# Graphic 发布说明
+# Cloudflare Pages 发布说明
 
-## 只发布 `public/`
+本文只描述**文档流程**，本次不登录、不部署、不真实调用 SenseNova。用户明确授权后才可执行发布。
 
-本次全流程演示只发布 `public/` 的 HTML、CSS、JavaScript 和图片。不要发布仓库根目录，否则可能公开文档、检查脚本或本地配置。项目**无需构建、无需 Webdev、无需环境变量或 API 密钥**。
+## 1. 发布边界与目录
 
-`public/api-config.js` 默认是空 endpoint 的 `mode: demo`；前端使用本地模板和浏览器 `localStorage`。若未来接入真实服务，应先按 [API_INTEGRATION.md](./API_INTEGRATION.md) 部署并审查同源后端，不要把密钥写入静态文件。
+站点静态资源输出目录是仓库根的 `public/`；Cloudflare Pages Functions 位于仓库根的 `functions/`，**不在 `public/` 内**。不要把整个仓库当静态资源公开，也不要把 `functions/` 复制进 `public/`。
 
-## 先检查
+SenseNova 专用模式 `protocol='sensenova-proxy'` 依赖同源 Pages Function。它只把 `/api/sensenova/images/generations` 与 `/api/sensenova/images/edits` 转发到固定的 `https://token.sensenova.cn/v1` 两路径；不需要服务器 SenseNova secret 或 environment binding，key 由用户当前页面输入并透传。Function 必须遵守 API 文档的静态错误、无日志/回显、禁止重定向和无重试边界。
 
-在仓库根目录运行：
+仓库已提供 `public/_routes.json`，将 Function 调用范围限制为 `/api/sensenova/*`。不要把它误解为静态资源路由；最终以 Cloudflare Pages 路由规则核实为准。
+
+## 2. 本地预览：区分静态 Python 与 Functions
+
+仅看静态页面时，在仓库根运行：
 
 ```bash
-node scripts/check-catalog.cjs
-node scripts/test-api.cjs
 python3 -m http.server 8000 --directory public
 ```
 
-打开 <http://localhost:8000>，确认 Logo 默认首页、素材库切换、五种工具、参考图、作品管理和账号演示正常。正式发布时确保发布根目录直接包含 `index.html`，不要嵌套一层 `public/`。
+这只是静态 Python 预览，**不会执行或验证 `functions/`**，因此不能用来验证 `sensenova-proxy`。
 
-## 正式站点：Cloudflare Pages 绑定 GitHub
+要预览 Pages Functions，在仓库根运行（不是在 `public/` 中）：
 
-在 Cloudflare Pages 创建或打开项目，绑定私有仓库 `sincalaway/graphic-site`，允许平台访问该仓库。
+```bash
+npx wrangler pages dev public --compatibility-date=2026-06-24
+```
 
-| 配置 | 填写 |
+本次使用 Wrangler 4.102.0 完成离线编译及本地运行时拒绝检查；显式兼容日期避免旧工具将系统当前日期当成尚不支持的运行时版本。可使用受支持的新版 Wrangler，但升级工具不等于自动部署。
+
+该命令是 Cloudflare Pages 本地开发入口，不需要供应商 key 或 Cloudflare 登录即可做本地拒绝边界检查。注意：带有效 key 的请求即使在本地也会转发至真实上游并可能计费；本任务只运行 mock 测试和无 key 的拒绝检查。
+
+## 3. Cloudflare Pages Git 配置
+
+在 Cloudflare Pages 绑定已确认的 GitHub 仓库后，配置如下：
+
+| 配置 | 值 |
 |---|---|
 | Production branch | `main` |
 | Framework preset | `None` |
-| Build command | `exit 0`（若允许也可留空） |
+| Build command | `exit 0`（静态站点无需构建） |
 | Build output directory | `public` |
 | Root directory | 留空，保持仓库根目录 |
 
-保存并部署。之后修改 `public/` 并提交到 `main`，若平台启用了自动部署，即可更新正式站点。参考：[静态 HTML](https://developers.cloudflare.com/pages/framework-guides/deploy-anything/)、[Git 集成](https://developers.cloudflare.com/pages/get-started/git-integration/)、[构建配置](https://developers.cloudflare.com/pages/configuration/build-configuration/)。
+仓库根目录必须保持为空配置；不要把 Root directory 改为 `public`，否则根目录的 `functions/` 不会按预期纳入 Pages Functions 部署。Dashboard 的 drag-and-drop 只上传静态 `public` 内容，**不会编译或部署 `functions/`**。
 
-## 当前 API 优化版临时预览
+## 4. Direct Upload / Wrangler（仅文档，不执行）
 
-临时预览名称固定为 `graphic-api-errors`，仅上传 `public/`，使用以下命令（日期按发布当天填写；本次要求的日期为 `2026-10-19`）：
-
-```bash
-npx --yes wrangler@4.102.0 deploy --temporary --name graphic-api-errors --compatibility-date 2026-10-19 --assets /绝对路径/graphic-site/public
-```
-
-建议在隔离的 HOME/XDG 目录中运行，并从该进程环境清除 Cloudflare 变量，避免使用或改变已有登录状态；这不会影响已有 Cloudflare 登录：
+先安装 Node.js（建议受当前 Wrangler 支持的 LTS 版本）。使用 `npx wrangler login` 完成 Cloudflare 授权。若尚未有 Pages 项目，用 `npx wrangler pages project create` 按提示创建并确认项目名及 production branch `main`；已有项目不要重复创建。然后在仓库根运行：
 
 ```bash
-TMP_HOME="$(mktemp -d)"
-env -i HOME="$TMP_HOME" XDG_CONFIG_HOME="$TMP_HOME/.config" PATH="$PATH" \
-  npx --yes wrangler@4.102.0 deploy --temporary --name graphic-api-errors \
-  --compatibility-date 2026-10-19 --assets /绝对路径/graphic-site/public
-rm -rf "$TMP_HOME"
+npx wrangler pages deploy public --project-name <confirmed> --branch main
 ```
 
-如当前 shell 设有 `CLOUDFLARE_*`、`CF_*` 等账号/令牌变量，请不要传入该隔离进程；已有登录文件也不会被读取或修改。具体 CLI 可能返回公开访问 URL 和私密 claim 链接；**claim 链接只在私聊中保存和使用，生成后 60 分钟内领取，不要写入仓库、公开网页、截图或日志**。
+这里的 `<confirmed>` 必须替换为已确认的真实 Pages project name；本次不猜测、不执行。从仓库根运行此命令时，Wrangler 会发现并编译根目录的 `functions/`，连同 `public/` 静态资源发布到指定 Pages 项目；Function 源码不会作为静态资源公开。确认 CLI 输出包括 Functions 编译成功和部署 URL。不要从 `public/` 目录执行命令，也不要用 dashboard 拖放替代。
 
-临时部署不会更新旧 URL，不会自动绑定 Git，也不会让旧网址的 `localStorage` 同步到新地址。每次重新部署可能得到不同 URL；需要长期固定地址并跟随 GitHub 更新，请使用正式站点。临时预览也不会自动继承旧站点账号或业务服务。
+旧命令：
 
-## 直接上传（已有 Pages 项目）
+```bash
+wrangler deploy --temporary --assets ...
+```
 
-如果要更新已有的 Cloudflare Pages 项目，可只上传 `public/` 内容；旧项目名和正式站点配置由项目维护者自行确认。临时部署命令中的 `graphic-api-errors` 不会替换或覆盖旧 URL。
+不会部署这些 Cloudflare Pages Functions，不得作为本项目专用模式的发布命令。
 
-## 常见问题
+## 5. Git 集成、`[skip ci]` 与发布声明
 
-**改了文件没变化？** 确认打开的是本次部署返回的 URL 并强制刷新；Git 提交不会触发临时预览自动更新。
+本项目使用 GitHub Actions/Pages 时，未来用于文档或代码提交的 commit 可使用前缀：
 
-**作品或参考图不见了？** 数据只在当前浏览器、当前站点地址的 `localStorage` 中；从旧网址换到新网址、换设备或清理站点数据都不会同步。请在换址前下载作品并重新添加参考图。
+```text
+[skip ci] docs: ...
+```
 
-**这是 AI 或真实账号吗？** 不是。默认是本地模板演示；语义理解、真实模型、账号/微信/邮箱服务、邮件、积分、支付和云端同步均待接入。图片转 SVG 只是 SVG 中的位图容器，不是描摹。
+该前缀按 Cloudflare Pages 官方 Git 集成规则跳过自动部署，也用于跳过常规 GitHub Actions push / pull_request 工作流；其他自定义外部 webhook 不应仅靠此标记保证。**带 `[skip ci]` 的 commit 不能声称网站已更新**；跳过后如需真正发布，必须由维护者手动部署，或再提交一个不带 `[skip ci]` 的 commit 并确认构建完成。Git 提交本身也不等于临时预览已更新。
 
-**图标提示“图片未找到”？** 核对文件已上传、路径大小写正确；配置从 `assets/` 开始，不含 `public/` 前缀。不支持外站图片 URL 或 `../` 路径。
+官方参考：
 
-**分类数字比卡片少？** 数字只统计真实图标；额外空位和 `placeholder: true` 不计数。分类扩展请继续编辑 [`public/catalog.js`](./public/catalog.js)，详细步骤见 [添加分类与图标.md](./添加分类与图标.md)。
+- [Pages Functions getting started](https://developers.cloudflare.com/pages/functions/get-started/)
+- [Pages Direct Upload](https://developers.cloudflare.com/pages/get-started/direct-upload/)
+- [Pages GitHub integration](https://developers.cloudflare.com/pages/configuration/git-integration/github-integration/)
 
-**网站是否私密？** 不是。私有仓库只限制源码访问，发布后的文件任何持有公开链接的人都可查看。不要发布敏感内容。
+## 6. 发布前检查与发布后最小验证
 
-源码仓库：<https://github.com/sincalaway/graphic-site>（私有，需要授权）。
+发布前运行 `node scripts/test-sensenova-proxy.cjs`（完全离线 mock）及 README 的现有检查；本地浏览器测试启动静态服务器后执行 `python3 scripts/test-sensenova-ui.py`。Wrangler 仅编译验证可运行 `npx wrangler pages functions build --outdir /tmp/graphic-functions-build`，不会部署。用户授权后才可执行发布。
 
-## 本次仓库核实
+部署完成后，仅做不产生生成费用的最小检查：
 
-本地 `origin` 与已授权 GitHub 账号均为 `sincalaway/graphic-site`，仓库为私有，账号有 ADMIN 权限。用户已进一步确认 `sincalaway/graphic-site` 为正确仓库；最初的 `sincalwow/graphic-site` 是过期错误路径。本次仅更新已确认的现有远端，不创建或更换仓库。
+1. 无 key 的 `GET /api/sensenova/...` 不应生成；
+2. 无 `Authorization` 的 `POST` 不应生成；
+3. 仅确认返回静态错误 `error.code` 与 HTTP 状态，不应出现上游错误正文、key 或重定向。
 
-REA 结论见 [公开证据摘要](docs/REA_EVIDENCE.md)。仅发布 `public/`，不得发布 REA 原始证据、分析文档、测试脚本、部署日志或 claim 链接。
+上述检查只能证明拒绝边界/路由存在，**不能证明模型可用或成功生成**。不要在未获授权时输入 key、调用上游或发布。
+
+## 7. 重要限制
+
+SenseNova 专用模式在本项目限制 `n=1..4`（不是供应商能力承诺）；单图不超过 8 MiB、最多 6 张 PNG/JPEG/WebP，整个请求不超过 20 MiB。无重试、无重定向；取消或超时仍可能计费。站点默认仍是本地 demo，浏览器直连的 `graphic-json` 与 `openai-images` 资料保留且不应与专用模式混淆。

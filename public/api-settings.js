@@ -11,7 +11,7 @@
     editPath: "/edit",
     vectorizePath: "",
   };
-  var PROTOCOLS = ["graphic-json", "openai-images"];
+  var PROTOCOLS = ["graphic-json", "openai-images", "sensenova-proxy"];
   function copy(v) {
     var out = {};
     Object.keys(DEFAULTS).forEach(function (k) {
@@ -65,6 +65,16 @@
     var v = copy(Object.assign({}, DEFAULTS, value));
     if (typeof v.enabled !== "boolean" || PROTOCOLS.indexOf(v.protocol) < 0)
       throw new Error("API 设置无效");
+    if (v.protocol === "sensenova-proxy") {
+      var origin = global.location && global.location.origin;
+      if (!origin || !base(origin)) throw new Error("同源代理需要 HTTPS 或 localhost 页面");
+      // Never trust a stored/input URL for the dedicated proxy.
+      v.baseUrl = origin + "/api/sensenova";
+      v.model = "sensenova-u1.5-lite";
+      v.generatePath = "/images/generations";
+      v.editPath = "/images/edits";
+      v.vectorizePath = "";
+    }
     if (v.enabled && !base(v.baseUrl)) throw new Error("API 服务地址无效");
     if (!v.enabled && v.baseUrl !== "" && !base(v.baseUrl))
       throw new Error("API 服务地址无效");
@@ -77,9 +87,10 @@
     if (
       typeof v.apiKey !== "string" ||
       v.apiKey.length > 4096 ||
-      (v.enabled && v.protocol === "openai-images" && !v.apiKey)
+      /[\x00-\x20\x7f]/.test(v.apiKey) ||
+      (v.enabled && ["openai-images", "sensenova-proxy"].indexOf(v.protocol) >= 0 && !v.apiKey)
     )
-      throw new Error("OpenAI Images 必须填写 API key");
+      throw new Error("API key 必须填写且不能包含空白或控制字符");
     if (
       !path(v.generatePath, false) ||
       !path(v.editPath, true) ||
