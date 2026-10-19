@@ -22,12 +22,15 @@ Graphic 是一个**本地优先**的网站。默认进入 Logo 创作，保留�
 1. 打开 **配置 API**，选择协议并填写协议所需字段：保留的 `graphic-json` / `openai-images` 仍是浏览器直连；新增的专用 `sensenova-proxy` 仅使用同源 `/api/sensenova`，模型固定为 `sensenova-u1.5-lite`，`baseUrl` 运行时固定为 `location.origin + '/api/sensenova'`，不可改成通用代理。
 2. 选择 `sensenova-proxy` 时，只在当前页面输入 SenseNova key；它仅放入当前标签页 `sessionStorage`，不读取平台保存的密钥；刷新时可读取本页会话配置。阅读安全提示并勾选确认（只有随后点击生成/编辑，key、提示词和使用的图片才会发送，可能计费）。
 3. 点 **保存配置**。这一步只做本地格式校验和保存，不测试、不收费、不发请求。
+   UI 将另提供 **“只读检查模型列表”** 按钮：使用当前表单中的 key 请求固定同源 `GET /api/sensenova/models`，只读取模型 ID，用于检查接口是否可访问以及是否包含 `sensenova-u1.5-lite`。这项检查不保存 key、不发图；列表可访问不证明图片生成权限或模型一定能生成。
 4. 回到工具填写提示词/参考图，第一次点 **生成** 或 **编辑** 才会请求服务。失败不会默默回退 demo，也不会自动重试。
 5. 不再使用时点 **清除配置**；配置会清空并回到 demo。
 
 配置只放在当前标签页的 `sessionStorage`：刷新通常保留，关闭标签页通常清除；浏览器的“恢复标签页”或复制标签页可能恢复或复制会话数据，因此不要把它当作密钥保险箱。key 仍能被页面脚本、浏览器扩展或 XSS 读取。建议使用低额度、短期 key，或使用自己的后端代理；绝不要把 key 写入源文件、作品、日志或仓库。
 
 支持的协议、SenseNova 专用请求/响应、地址限制、CORS、错误诊断和费用边界见 **[API_INTEGRATION.md](./API_INTEGRATION.md)**。当前仅保留原浏览器直连的 `graphic-json` / `openai-images` 与专用 `sensenova-proxy`；后者不是通用代理，不支持 `vectorize`。通用提示可由 `GraphicAPI.errorInfo(e)` 整理为 `title/message/hint/code/status`；不会暴露原始错误 body、URL 或 key，也不会自动重试或回退。本次不读取真实 key、不调用真实生成或编辑；自动化测试只验证配置与传输行为。失败、超时或图片下载失败可能服务端已完成且收费，手动重试前先查服务端记录。
+
+固定同源 `GET /api/sensenova/models` 只转发到 `https://token.sensenova.cn/v1/models`，成功响应裁剪为 `{ "data": [{ "id": "..." }] }`，仅保留模型 ID；缺少或无效 `Authorization: Bearer <key>` 返回 `401`。它与生成/编辑共用同源来源、Fetch Metadata、禁止重定向、无开放 CORS 和静态错误边界。`403` 通过自身安全 `error.code` 区分 `origin_not_allowed` 与 `upstream_error`；不能据此或据模型列表断定图片生成能力。
 
 ## 本地数据与演示边界
 
@@ -121,3 +124,5 @@ python3 scripts/test-api-errors-ui.py
 ## 隐私与仓库
 
 发布后的 `public/` 文件可被持有公开链接的人查看；仓库私有不代表网站内容私有。不要把密钥、个人信息或无权公开的图标放进 `public/`。源码仓库：<https://github.com/sincalaway/graphic-site>（私有，需要授权）。部署状态以实际发布环境为准；发布或更新网站请按 [部署说明](./DEPLOY_CLOUDFLARE.md) 操作。
+
+诊断离线回归：`node scripts/test-sensenova-models.cjs`；启动静态服务器后运行 `GRAPHIC_TEST_URL=http://127.0.0.1:4210/ python3 scripts/test-sensenova-diagnostics.py`。全部使用 mock，不读取真实 key 或连接供应商。

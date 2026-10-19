@@ -157,6 +157,8 @@
       API_CONFIG_INVALID: ["API 配置无效", "当前协议或操作配置不完整。", "打开 API 配置检查 HTTPS 地址、API 前缀、模型 ID 和操作路径。"],
       API_NOT_CONFIGURED: ["尚未配置 API", "当前没有可用的真实 API 配置。", "检查 API 配置，或清除设置后使用本地 demo。"],
       API_VECTORIZE_UNSUPPORTED: ["当前协议不支持转换", "当前 Images 协议不提供此处的矢量化操作。", "请使用实现 Graphic JSON 契约的后端，或切回本地 demo。"],
+      SENSENOVA_ORIGIN_NOT_ALLOWED: ["本站同源检查拒绝", "HTTP 403 · origin_not_allowed：请求未通过本站代理的来源检查，尚未转发上游。", "请直接打开当前测试站，避免嵌入其他站点；检查 Origin / Sec-Fetch-Site。此错误不能归因于 key。"],
+      SENSENOVA_UPSTREAM_FORBIDDEN: ["SenseNova 上游拒绝", "HTTP 403 · upstream_error：本站代理已收到上游的拒绝响应。", "可先运行只读模型列表检查；列表可访问或包含模型不代表具有图片生成权限，也不能排除上游访问策略。不会自动重试。"],
       HTTP_ERROR: ["API 返回 HTTP 错误", "服务端拒绝或未能完成请求。", "核对 API 配置与服务商状态；这里不会显示服务端原始错误正文。"],
       UNKNOWN_ERROR: ["暂时无法完成", "操作未完成，未保存新结果。", "请检查配置与输入；不能从现有信息确认原因。"]
     };
@@ -490,11 +492,7 @@
         throw e;
       }
       if (!response || !response.ok)
-        throw new ApiError(
-          "HTTP_ERROR",
-          "API 请求失败（HTTP " + ((response && response.status) || 0) + "）",
-          { status: response && response.status },
-        );
+        throw await httpFailure(response, selected.kind === "user" && c.protocol === "sensenova-proxy");
       phase = "response";
       var result;
       try {
@@ -532,8 +530,47 @@
         external.removeEventListener("abort", abort);
     }
   }
+  // Only this site's fixed proxy may supply these two allowlisted static codes.
+  async function httpFailure(response, proxy) {
+    var status = response && response.status, code = "HTTP_ERROR";
+    if (proxy && status === 403) {
+      try {
+        var body = await response.json();
+        if (body && body.error && body.error.code === "origin_not_allowed")
+          code = "SENSENOVA_ORIGIN_NOT_ALLOWED";
+        else if (body && body.error && body.error.code === "upstream_error")
+          code = "SENSENOVA_UPSTREAM_FORBIDDEN";
+      } catch (_) { /* HTML/WAF/unknown JSON stays a generic HTTP error. */ }
+    }
+    return new ApiError(code, "API 请求失败（HTTP " + (status || 0) + "）", { status: status });
+  }
+  async function checkSenseNovaModels(apiKey) {
+    // Explicit action only; no settings/storage writes and no image endpoints.
+    var key = typeof apiKey === "string" ? apiKey.trim() : "";
+    if (!key || !/^[^\s\x00-\x1f\x7f]{1,4096}$/.test(key))
+      throw new ApiError("API_CONFIG_INVALID", "请先在当前表单填写有效的 API key");
+    var controller = new AbortController(), timedOut = false;
+    var timer = setTimeout(function () { timedOut = true; controller.abort(); }, 30000);
+    try {
+      var response = await fetch(global.location.origin + "/api/sensenova/models", {
+        method: "GET", headers: { Accept: "application/json", Authorization: "Bearer " + key },
+        credentials: "omit", redirect: "error", cache: "no-store", signal: controller.signal,
+      });
+      if (!response || !response.ok) throw await httpFailure(response, true);
+      var body = await response.json();
+      if (!body || !Array.isArray(body.data) || body.data.length > 10000 ||
+          body.data.some(function (item) { return !item || typeof item.id !== "string" ||
+            !/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$/.test(item.id) || item.id.indexOf(key) >= 0; }))
+        throw new ApiError("INVALID_RESPONSE", "模型列表格式无效");
+      return { accessible: true, hasRequiredModel: body.data.some(function (item) {
+        return item.id === "sensenova-u1.5-lite";
+      }), count: body.data.length };
+    } catch (e) { throw normalize(e, timedOut); }
+    finally { clearTimeout(timer); key = ""; }
+  }
   var api = {
     errorInfo: errorInfo,
+    checkSenseNovaModels: checkSenseNovaModels,
     status: function () {
       var c = cfg(),
         s = settings(),

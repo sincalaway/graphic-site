@@ -7,13 +7,30 @@
 ### 安全边界与固定路由
 
 - 前端 `baseUrl` 运行时固定为 `location.origin + '/api/sensenova'`，请求只发到同源 Pages Function。
-- Function 仅转发至固定上游 `https://token.sensenova.cn/v1` 的两条路径：`/images/generations` 与 `/images/edits`；这不是可配置的通用代理。
+- Function 仅转发至固定上游 `https://token.sensenova.cn/v1` 的三条路径：`/images/generations`、`/images/edits` 与只读的 `/models`；这不是可配置的通用代理。
 - key **只取用户当前页面输入**，保存在当前标签页 `sessionStorage`；不读取平台保存的 secret；刷新时可读取本页面输入并保存在 sessionStorage 的配置，不把 key 写入源码、URL、作品、服务器环境变量、日志或响应回显。
 - `Authorization: Bearer <key>` 透传到上游；不能把 key 放 query、路径或 JSON 字段。无服务器端 SenseNova secret 或 environment binding 需要。
 - 上游错误只允许向浏览器返回静态 `code` / `status` 分类；不得转发、记录或回显上游错误正文、key、请求体或完整 URL。
 - 禁止重定向，不自动重试。取消或超时只表示浏览器停止等待；上游可能仍在处理并计费。
 
 前端模式和受限 Function 已在仓库中实现；本次仅通过 mock / 离线测试验证，不发起真实生成或编辑，也不部署。此前单独生成测试成功不代表编辑、批量或其他参数已由供应商验证。
+
+### 只读模型列表检查
+
+UI 将提供 **“只读检查模型列表”** 按钮。它使用当前表单中的 key（不保存、不读取平台 secret），请求固定同源端点：
+
+```http
+GET /api/sensenova/models
+Authorization: Bearer <当前表单输入的 key>
+```
+
+该端点固定转发到 `GET https://token.sensenova.cn/v1/models`，成功响应只保留模型 ID：
+
+```json
+{ "data": [{ "id": "sensenova-u1.5-lite" }] }
+```
+
+缺少或无效 Authorization 返回 `401`。它与生成/编辑共用同源 Origin、Fetch Metadata、禁止重定向、无开放 CORS 和不回显上游正文的防护；`403` 只通过自身安全错误 `error.code` 区分 `origin_not_allowed` 或 `upstream_error`。列表可访问、或列表包含 `sensenova-u1.5-lite`，都不能证明该 key 具备图片生成权限，也不能断定图片一定能生成。该检查不发送图片、不产生图片生成请求。
 
 ### 来源、大小、超时和日志
 
@@ -57,7 +74,7 @@ Authorization: Bearer <当前页面输入的 key>
 
 ### 返回与失败
 
-Function 最多读取 20 MiB 上游响应，只保留 `data[].b64_json` 或安全 HTTPS `data[].url`；前端只消费经过项目契约校验的栅格结果；接受经过白名单过滤的 Images `data` 结果；外链结果仍需图片主机允许浏览器 CORS，Function 不代取任意图片 URL。Function 对上游失败只返回静态分类，例如 HTTP 401 与 `{ "error": { "code": "upstream_error" } }`；status 由 HTTP 状态表示，不返回原始 body。页面错误展示也不得暴露 key、URL 或原始错误正文。
+Function 最多读取 20 MiB 上游响应，只保留 `data[].b64_json` 或安全 HTTPS `data[].url`；前端只消费经过项目契约校验的栅格结果；接受经过白名单过滤的 Images `data` 结果；外链结果仍需图片主机允许浏览器 CORS，Function 不代取任意图片 URL。Function 对上游失败只返回静态分类，例如 HTTP 401 与 `{ "error": { "code": "upstream_error" } }`；对于 HTTP 403，使用自身安全 `error.code` 区分 `origin_not_allowed` 与 `upstream_error`。status 由 HTTP 状态表示，不返回原始 body。页面错误展示也不得暴露 key、URL 或原始错误正文。
 
 失败、取消、超时或图片下载失败时，上游可能已完成并计费；不要立即盲目重试，先查服务端请求/账单记录。没有 key 时本项目不会进行真实调用。
 

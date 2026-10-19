@@ -6,9 +6,9 @@
 
 站点静态资源输出目录是仓库根的 `public/`；Cloudflare Pages Functions 位于仓库根的 `functions/`，**不在 `public/` 内**。不要把整个仓库当静态资源公开，也不要把 `functions/` 复制进 `public/`。
 
-SenseNova 专用模式 `protocol='sensenova-proxy'` 依赖同源 Pages Function。它只把 `/api/sensenova/images/generations` 与 `/api/sensenova/images/edits` 转发到固定的 `https://token.sensenova.cn/v1` 两路径；不需要服务器 SenseNova secret 或 environment binding，key 由用户当前页面输入并透传。Function 必须遵守 API 文档的静态错误、无日志/回显、禁止重定向和无重试边界。
+SenseNova 专用模式 `protocol='sensenova-proxy'` 依赖同源 Pages Function。它把 `/api/sensenova/images/generations`、`/api/sensenova/images/edits` 和只读的 `/api/sensenova/models` 转发到固定的 `https://token.sensenova.cn/v1` 路径；其中 models 只返回 `{data:[{id}]}`，缺 auth 返回 401。不需要服务器 SenseNova secret 或 environment binding，key 由用户当前页面输入并透传。Function 必须遵守 API 文档的静态错误、无日志/回显、禁止重定向和无重试边界；403 必须用自身安全 `error.code` 区分 `origin_not_allowed` / `upstream_error`，不能把模型列表可访问当作图片生成权限证明。
 
-仓库已提供 `public/_routes.json`，将 Function 调用范围限制为 `/api/sensenova/*`。不要把它误解为静态资源路由；最终以 Cloudflare Pages 路由规则核实为准。
+仓库已提供 `public/_routes.json`，将 Function 调用范围限制为 `/api/sensenova/*`，包括只读模型列表。不要把它误解为静态资源路由；最终以 Cloudflare Pages 路由规则核实为准。
 
 ## 2. 本地预览：区分静态 Python 与 Functions
 
@@ -62,7 +62,15 @@ wrangler deploy --temporary --assets ...
 
 不会部署这些 Cloudflare Pages Functions，不得作为本项目专用模式的发布命令。
 
-## 5. Git 集成、`[skip ci]` 与发布声明
+## 5. Worker 适配（非 Pages Functions）
+
+仓库 `worker.mjs` 已提供三个固定 API 路由入口。若选择 Cloudflare Worker，需要用 Worker 的 `fetch(request, env, ctx)` 作为同源路由入口，在入口中复用受限转发逻辑，并将静态资源请求交给绑定的 `env.ASSETS.fetch(request)`；也就是 **fetch + ASSETS** 适配，而不是只上传静态 assets。Worker 仍须提供 `/api/sensenova/models`、`/api/sensenova/images/generations` 和 `/api/sensenova/images/edits` 三个固定同源路由，并保留来源防护、静态错误、无日志/回显、禁止重定向和无重试边界。
+
+配置 `main: "worker.mjs"`、`assets.directory: "./public"`、`assets.binding: "ASSETS"`、`assets.run_worker_first: ["/api", "/api/*"]`，避免 API 被静态回退覆盖。`main` 和库文件在 assets 目录之外，不会作为静态文件公开。
+
+临时 Worker 也必须带有上述 `fetch` 路由入口（及对应的 ASSETS 绑定/处理）；`wrangler deploy --temporary --assets ...` 之类的纯 assets 发布不能提供 API 路由，不能作为本项目专用模式的适配。
+
+## 6. Git 集成、`[skip ci]` 与发布声明
 
 本项目使用 GitHub Actions/Pages 时，未来用于文档或代码提交的 commit 可使用前缀：
 
@@ -78,9 +86,9 @@ wrangler deploy --temporary --assets ...
 - [Pages Direct Upload](https://developers.cloudflare.com/pages/get-started/direct-upload/)
 - [Pages GitHub integration](https://developers.cloudflare.com/pages/configuration/git-integration/github-integration/)
 
-## 6. 发布前检查与发布后最小验证
+## 7. 发布前检查与发布后最小验证
 
-发布前运行 `node scripts/test-sensenova-proxy.cjs`（完全离线 mock）及 README 的现有检查；本地浏览器测试启动静态服务器后执行 `python3 scripts/test-sensenova-ui.py`。Wrangler 仅编译验证可运行 `npx wrangler pages functions build --outdir /tmp/graphic-functions-build`，不会部署。用户授权后才可执行发布。
+发布前运行 `node scripts/test-sensenova-proxy.cjs`与 `node scripts/test-sensenova-models.cjs`（完全离线 mock）及 README 的现有检查；本地浏览器测试启动静态服务器后执行 `python3 scripts/test-sensenova-ui.py` 和 `python3 scripts/test-sensenova-diagnostics.py`（默认端口分别为 4206、4210，可用 `GRAPHIC_TEST_URL` 指定）。Wrangler 仅编译验证可运行 `npx wrangler pages functions build --outdir /tmp/graphic-functions-build`，不会部署。用户授权后才可执行发布。
 
 部署完成后，仅做不产生生成费用的最小检查：
 
@@ -90,6 +98,6 @@ wrangler deploy --temporary --assets ...
 
 上述检查只能证明拒绝边界/路由存在，**不能证明模型可用或成功生成**。不要在未获授权时输入 key、调用上游或发布。
 
-## 7. 重要限制
+## 8. 重要限制
 
 SenseNova 专用模式在本项目限制 `n=1..4`（不是供应商能力承诺）；单图不超过 8 MiB、最多 6 张 PNG/JPEG/WebP，整个请求不超过 20 MiB。无重试、无重定向；取消或超时仍可能计费。站点默认仍是本地 demo，浏览器直连的 `graphic-json` 与 `openai-images` 资料保留且不应与专用模式混淆。
