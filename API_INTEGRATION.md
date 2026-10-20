@@ -11,7 +11,7 @@
 - key **只取用户当前页面输入**，保存在当前标签页 `sessionStorage`；不读取平台保存的 secret；刷新时可读取本页面输入并保存在 sessionStorage 的配置，不把 key 写入源码、URL、作品、服务器环境变量、日志或响应回显。
 - `Authorization: Bearer <key>` 透传到上游；不能把 key 放 query、路径或 JSON 字段。无服务器端 SenseNova secret 或 environment binding 需要。
 - 上游错误只允许向浏览器返回静态 `code` / `status` 分类；不得转发、记录或回显上游错误正文、key、请求体或完整 URL。
-- 禁止重定向，不自动重试。取消或超时只表示浏览器停止等待；上游可能仍在处理并计费。
+- 禁止重定向；生成和编辑 POST 不自动重试。仅只读模型列表 GET 可按下述规则有限重试。取消或超时只表示浏览器停止等待；上游可能仍在处理并计费。
 
 前端模式和受限 Function 已在仓库中实现；本次仅通过 mock / 离线测试验证，不发起真实生成或编辑，也不部署。此前单独生成测试成功不代表编辑、批量或其他参数已由供应商验证。
 
@@ -31,6 +31,12 @@ Authorization: Bearer <当前表单输入的 key>
 ```
 
 缺少或无效 Authorization 返回 `401`。它与生成/编辑共用同源 Origin、Fetch Metadata、禁止重定向、无开放 CORS 和不回显上游正文的防护；`403` 只通过自身安全错误 `error.code` 区分 `origin_not_allowed` 或 `upstream_error`。列表可访问、或列表包含 `sensenova-u1.5-lite`，都不能证明该 key 具备图片生成权限，也不能断定图片一定能生成。该检查不发送图片、不产生图片生成请求。
+
+模型列表 GET 仅对上游 `502` / `503` / `504` 和 fetch 网络 `TypeError` 重试，**最多 3 次总尝试**，退避分别为 2 秒和 4 秒。`401` / `403` / `429`、其他状态、响应解析错误和取消均不触发重试；仍禁止跟随重定向。所有尝试与退避共用一个 120 秒上游期限，退避可立即取消；客户端取消返回 `499 request_cancelled`，超时返回 `504 upstream_timeout_or_cancelled`。重试日志沿用脱敏字段，仅使用静态字符串错误码，不记录异常内容。
+
+附件修复审查确认：原补丁在模型 GET 重试分支调用了未定义的 `log`，会把暂时性 `503` 变成单次请求后的 `502 upstream_unavailable`；现实现已在模型处理函数内初始化日志。未采用附件的图像 POST 重试，因为缺乏上游幂等保证时可能重复生成、重复计费。重试也不能修复来源检查、鉴权或权限导致的 `403`；当前仅凭代码与 mock 测试，不能认定线上故障根因已消除。附件 Python 脚本只是读取固定 Git blob 并输出 Windows 本地文件，不会自动更新仓库或部署。
+
+回归命令：`node scripts/test-sensenova-retries.cjs`。覆盖模型 GET 成功恢复与上限、状态/异常分类、取消/超时、响应流和计时器清理、日志脱敏，以及生成/编辑 POST 始终只发一次；全部使用 mock，不请求真实上游、不读取真实密钥。
 
 ### 来源、大小、超时和日志
 
@@ -80,7 +86,7 @@ Function 最多读取 20 MiB 上游响应，只保留 `data[].b64_json` 或安�
 
 ### 明确不支持
 
-`sensenova-proxy` 不支持 `vectorize`，不把矢量化伪装成生成或编辑；不支持任意上游路径、任意模型、任意 provider、重定向、重试、服务端保存 key、服务端日志、响应回显或服务器端 SenseNova secret binding。
+`sensenova-proxy` 不支持 `vectorize`，不把矢量化伪装成生成或编辑；不支持任意上游路径、任意模型、任意 provider、重定向、图像 POST 自动重试、服务端保存 key、敏感内容日志、响应回显或服务器端 SenseNova secret binding。仅允许上文定义的模型 GET 有限重试与脱敏诊断。
 
 
 ## 1. 浏览器直连模式：默认状态与 UI 入口
