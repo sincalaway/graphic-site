@@ -36,7 +36,7 @@ Authorization: Bearer <当前表单输入的 key>
 
 函数拒绝跨源 Origin 和跨站 / same-site Fetch Metadata，不发送开放 CORS 响应头。无 Origin 的非浏览器客户端可调用，但仍须提供自己的 Bearer key；来源校验不是用户鉴权，也不是限流。函数没有内置账号、WAF 或速率限制，公开部署建议由维护者配置平台访问/用量保护。仅允许 `model`、`prompt`、`n` 及编辑的 `image[]`；提示词最多 100,000 字符；重复 multipart 字段及未知字段拒绝。函数使用 120 秒上游超时，浏览器等待上限仍为 180 秒；取消尽力传递，不保证供应商撤销任务。
 
-应用代码没有 console 请求日志或存储绑定，不持久化请求/响应。维护者不要额外启用包含 Authorization 或正文的日志、抓包、Analytics 或中间件；平台和供应商自己的运行/计费元数据不由本项目控制。
+图像代理仅输出严格白名单诊断字段：`stage`、`request_id`（经格式校验的 CF Ray 或随机 ID）、固定 `model`、`upstream_status`、静态/白名单 `error_code`、`elapsed_ms`。不记录 Key、Authorization、提示词、图片、URL、原始响应正文、异常消息或堆栈，不持久化请求/响应。上游错误正文最多临时读取 64 KiB，仅识别明确白名单的错误码；其他值映射为静态分类，不原样输出。诊断不增加上游调用、不重试、不更换模型或端点。维护者不要额外启用包含 Authorization 或正文的日志、抓包、Analytics 或中间件；平台和供应商自己的运行/计费元数据不由本项目控制。
 
 ### 生成：JSON
 
