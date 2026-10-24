@@ -123,7 +123,7 @@ python3 scripts/test-api-errors-ui.py
 
 ## 隐私与仓库
 
-发布后的 `public/` 文件可被持有公开链接的人查看；仓库私有不代表网站内容私有。不要把密钥、个人信息或无权公开的图标放进 `public/`。源码仓库：<https://github.com/sincalaway/graphic-site>（私有，需要授权）。部署状态以实际发布环境为准；发布或更新网站请按 [部署说明](./DEPLOY_CLOUDFLARE.md) 操作。
+此仓库为公开仓库，源代码和发布后的站点文件都可被公众查看。部署到 Pages 时只把 `public/` 作为静态输出目录，不要把仓库根目录当作站点资源目录；不要提交密钥、个人信息或无权公开的素材。源码仓库：<https://github.com/sincalaway/graphic-site>。部署状态以实际发布环境为准；发布或更新网站请按 [部署说明](./DEPLOY_CLOUDFLARE.md) 操作。
 
 诊断离线回归：`node scripts/test-sensenova-models.cjs`；启动静态服务器后运行 `GRAPHIC_TEST_URL=http://127.0.0.1:4210/ python3 scripts/test-sensenova-diagnostics.py`。全部使用 mock，不读取真实 key 或连接供应商。
 
