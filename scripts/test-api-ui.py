@@ -25,15 +25,6 @@ def run():
                 body={'items':[{'id':'mock-1','name':'API设计','imageUrl':'data:image/png;base64,'+PNG}]}
             route.fulfill(status=200, content_type='application/json', body=json.dumps(body), headers={'Access-Control-Allow-Origin':'*'})
         page.route('https://mock-api.example/**', respond)
-        stability_calls=[]
-        def stability_mock(route):
-            request=route.request
-            if request.method == 'OPTIONS':
-                route.fulfill(status=204, headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization,content-type','Access-Control-Allow-Methods':'POST,OPTIONS'})
-                return
-            stability_calls.append({'url':request.url,'headers':request.headers,'body':request.post_data_buffer})
-            route.fulfill(status=200, content_type='image/png', body=base64.b64decode(PNG), headers={'Access-Control-Allow-Origin':'*'})
-        page.route('https://api.stability.ai/**', stability_mock)
         page.goto(BASE)
         assert page.evaluate('GraphicAPI.status().demo')
         page.locator('#api-help').click()
@@ -132,32 +123,31 @@ def run():
         assert 'test-placeholder' not in page.evaluate('JSON.stringify(sessionStorage)')
         page.locator('#api-help').click()
         page.locator('#api-enabled').check()
-        page.locator('#api-protocol').select_option('stability-ai')
-        assert page.locator('#api-base-url').input_value() == 'https://api.stability.ai'
-        assert page.locator('#api-base-url').get_attribute('readonly') is not None
-        assert page.locator('#api-model').input_value() == 'sd3.5-large'
-        assert page.locator('#api-model').get_attribute('readonly') is not None
-        page.locator('#api-key').fill('mock-stability-key')
+        page.locator('#api-protocol').select_option('comfyui-api')
+        assert page.locator('#api-base-url').input_value() == 'http://127.0.0.1:8188'
+        expect(page.locator('#api-workflow-status')).to_contain_text('尚未导入')
+        workflow = {'10': {'class_type': 'MockNode', 'inputs': {'text': 'fixed workflow value'}}}
+        page.locator('#api-workflow-file').set_input_files({
+            'name': 'mock-api-workflow.json',
+            'mimeType': 'application/json',
+            'buffer': json.dumps(workflow).encode(),
+        })
+        expect(page.locator('#api-workflow-status')).to_contain_text('1 个节点')
+        assert '提示词不会自动写入' in page.locator('#api-request-preview').inner_text()
         page.locator('#api-consent').check()
+        before_comfy_save = len(calls)
         page.locator('#api-settings-form button[type=submit]').click()
-        assert not stability_calls, 'saving Stability settings must not contact the provider'
-        page.locator('#view-studio').click()
-        page.locator('[data-tab="basic"]').click()
-        before_stability = page.locator('#result-grid .result-card').count()
-        page.locator('#brand').fill('Stability mock')
-        page.locator('#generate').click()
-        expect(page.locator('#result-grid .result-card')).to_have_count(before_stability + 1)
-        assert len(stability_calls) == 1
-        assert stability_calls[0]['url'] == 'https://api.stability.ai/v2beta/stable-image/generate/sd3'
-        assert stability_calls[0]['headers']['authorization'] == 'Bearer mock-stability-key'
-        assert 'multipart/form-data' in stability_calls[0]['headers']['content-type']
-        assert b'name="model"' in stability_calls[0]['body'] and b'sd3.5-large' in stability_calls[0]['body']
-        assert b'name="prompt"' in stability_calls[0]['body']
+        assert len(calls) == before_comfy_save, 'saving ComfyUI config must not send a request'
+        assert page.evaluate('GraphicAPI.status().protocol') == 'comfyui-api'
+        assert page.evaluate('GraphicAPI.status().operations.generate')
+        assert not page.evaluate('GraphicAPI.status().operations.edit')
+        assert page.evaluate('GraphicAPISettings.get().workflowJson').count('MockNode') == 1
+        assert page.evaluate('GraphicAPISettings.get().apiKey') == ''
         page.locator('#api-help').click()
         page.locator('#api-clear').click()
         page.reload();assert page.evaluate('GraphicAPI.status().demo')
         assert not errors, errors
-        print(json.dumps({'passed':True,'mock_api_requests':len(calls),'stability_mock_requests':len(stability_calls),'checks':['configuration and consent','save without request','session persistence','key excluded from localStorage/status/closed DOM','JSON generation','multipart edit and references','PNG export','unsupported operation disabled','Graphic JSON vectorize','Stability fixed config and mock multipart generation','URL validation','mobile settings','clear returns to demo','no JS errors']}, ensure_ascii=False, indent=2))
+        print(json.dumps({'passed':True,'mock_api_requests':len(calls),'checks':['configuration and consent','save without request','session persistence','key excluded from localStorage/status/closed DOM','JSON generation','multipart edit and references','PNG export','unsupported operation disabled','Graphic JSON vectorize','ComfyUI API workflow import and save without request','URL validation','mobile settings','clear returns to demo','no JS errors']}, ensure_ascii=False, indent=2))
         browser.close()
 
 if __name__=='__main__':run()

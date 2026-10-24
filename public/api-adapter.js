@@ -80,6 +80,15 @@
       return false;
     }
   }
+  function comfyBase(v) {
+    if (typeof v !== "string" || !v || /[\x00-\x20\\%?#]/.test(v)) return false;
+    try {
+      var u = new URL(v);
+      return !u.username && !u.password && !u.search && !u.hash && u.pathname === "/" &&
+        (u.protocol === "http:" || u.protocol === "https:") &&
+        ["localhost", "127.0.0.1", "[::1]"].indexOf(u.hostname) >= 0;
+    } catch (_) { return false; }
+  }
   function legacyConfigured(op) {
     var c = cfg(),
       e = c.endpoints && c.endpoints[op];
@@ -88,8 +97,11 @@
     );
   }
   function userConfigured(s, op) {
-    if (!s || !s.enabled || !userBase(s.baseUrl) || !s.model) return false;
-    if (["openai-images", "sensenova-proxy", "stability-ai"].indexOf(s.protocol) >= 0)
+    if (!s || !s.enabled) return false;
+    if (s.protocol === "comfyui-api")
+      return op === "generate" && comfyBase(s.baseUrl) && typeof s.workflowJson === "string" && !!s.workflowJson;
+    if (!userBase(s.baseUrl) || !s.model) return false;
+    if (["openai-images", "sensenova-proxy"].indexOf(s.protocol) >= 0)
       return op !== "vectorize" && (op === "generate" || op === "edit");
     return s.protocol === "graphic-json" && path(s[op + "Path"], false);
   }
@@ -97,7 +109,9 @@
     var s = settings();
     if (s && s.enabled) {
       if (!userConfigured(s, op)) {
-        if (["openai-images", "sensenova-proxy", "stability-ai"].indexOf(s.protocol) >= 0 && op === "vectorize")
+        if (s.protocol === "comfyui-api" && op !== "generate")
+          throw new ApiError("API_OPERATION_UNSUPPORTED", "ComfyUI 当前仅支持运行导入的生成 workflow");
+        if (["openai-images", "sensenova-proxy"].indexOf(s.protocol) >= 0 && op === "vectorize")
           throw new ApiError(
             "API_VECTORIZE_UNSUPPORTED",
             "当前图像 API 协议不支持矢量化",
@@ -134,9 +148,6 @@
     u.hash = "";
     return u.href;
   }
-  function stabilityUrl() {
-    return "https://api.stability.ai/v2beta/stable-image/generate/sd3";
-  }
   function normalize(e, timedOut) {
     if (timedOut) return new ApiError("REQUEST_TIMEOUT", "API 请求超时");
     if (e instanceof ApiError) return e;
@@ -160,11 +171,20 @@
       API_CONFIG_INVALID: ["API 配置无效", "当前协议或操作配置不完整。", "打开 API 配置检查 HTTPS 地址、API 前缀、模型 ID 和操作路径。"],
       API_NOT_CONFIGURED: ["尚未配置 API", "当前没有可用的真实 API 配置。", "检查 API 配置，或清除设置后使用本地 demo。"],
       API_VECTORIZE_UNSUPPORTED: ["当前协议不支持转换", "当前 Images 协议不提供此处的矢量化操作。", "请使用实现 Graphic JSON 契约的后端，或切回本地 demo。"],
+      API_OPERATION_UNSUPPORTED: ["当前协议不支持此操作", "ComfyUI 配置目前只运行已导入的生成 workflow。", "续改与矢量化需要对应的 workflow 和字段映射；请勿把当前页面输入当作已自动映射。"],
       SENSENOVA_ORIGIN_NOT_ALLOWED: ["本站同源检查拒绝", "HTTP 403 · origin_not_allowed：请求未通过本站代理的来源检查，尚未转发上游。", "请直接打开当前测试站，避免嵌入其他站点；检查 Origin / Sec-Fetch-Site。此错误不能归因于 key。"],
       SENSENOVA_UPSTREAM_FORBIDDEN: ["SenseNova 上游拒绝", "HTTP 403 · upstream_error：本站代理已收到上游的拒绝响应。", "可先运行只读模型列表检查；列表可访问或包含模型不代表具有图片生成权限，也不能排除上游访问策略。不会自动重试。"],
       SENSENOVA_EDGE_FORBIDDEN: ["本站前置安全验证", "HTTP 403 · 收到前置安全质询或 HTML，而非本站代理的 JSON 错误。", "请在当前浏览器直接打开测试站并完成安全验证，确认站点 cookie 可用后再手动检查。此响应不能认定为 SenseNova 或 key 拒绝。"],
-      STABILITY_CONTENT_FILTERED: ["内容审核未通过", "Stability AI 返回 HTTP 403。", "官方接口将 403 定义为请求被内容审核拦截；请调整提示词或输入图像后再考虑手动重试。"],
-      STABILITY_CREDITS_UNAVAILABLE: ["Stability AI credits 不足", "Stability AI 返回 HTTP 402。", "请在服务商账户查看 credits 与请求记录；本项目不会自动重试。"],
+      SENSENOVA_UPSTREAM_ERROR: ["SenseNova 上游请求失败", "本站代理返回安全错误码 upstream_error。", "HTTP 状态由页面单独显示；不会读取或显示上游原始错误正文。"],
+      SENSENOVA_UPSTREAM_UNAVAILABLE: ["SenseNova 上游暂不可用", "本站代理返回安全错误码 upstream_unavailable。", "可稍后检查服务状态；生成请求不会自动重试，先确认是否已有任务或计费记录。"],
+      SENSENOVA_INVALID_UPSTREAM_RESPONSE: ["SenseNova 上游响应无效", "本站代理返回安全错误码 invalid_upstream_response。", "检查服务状态；页面不会尝试解析或展示上游原始响应。"],
+      SENSENOVA_UPSTREAM_TIMEOUT_OR_CANCELLED: ["SenseNova 上游超时或取消", "本站代理返回安全错误码 upstream_timeout_or_cancelled。", "浏览器停止等待不代表上游任务已停止；先查任务与用量记录，避免重复提交。"],
+      SENSENOVA_UPSTREAM_RESPONSE_TOO_LARGE: ["SenseNova 上游响应过大", "本站代理返回安全错误码 upstream_response_too_large。", "检查上游响应与服务端限制；未自动重试。"],
+      COMFYUI_UNAVAILABLE: ["无法连接本机 ComfyUI", "浏览器没有读取到 ComfyUI 的本机响应。", "确认 ComfyUI 正在运行并监听配置地址；HTTPS 页面直连本机 HTTP 可能受浏览器本地网络或 CORS 限制。"],
+      COMFYUI_HTTP_ERROR: ["ComfyUI 请求失败", "本机 ComfyUI 返回 HTTP 错误。", "检查 ComfyUI API 状态与导入 workflow；页面不会显示响应正文。"],
+      COMFYUI_INVALID_RESPONSE: ["ComfyUI 响应格式无效", "没有收到可识别的 ComfyUI API 响应。", "确认地址指向 ComfyUI 服务且已导入 API 格式 workflow JSON。"],
+      COMFYUI_WORKFLOW_FAILED: ["ComfyUI workflow 执行失败", "本机 ComfyUI 报告 workflow 未完成。", "请在 ComfyUI 查看节点执行错误；本页面不读取或展示错误详情。"],
+      COMFYUI_NO_OUTPUT: ["workflow 没有可用图片输出", "ComfyUI 已完成，但历史结果中没有可读取的图片。", "确认导入的 API workflow 包含图片保存/输出节点；需要为目标 workflow 单独确认节点映射。"],
       HTTP_ERROR: ["API 返回 HTTP 错误", "服务端拒绝或未能完成请求。", "核对 API 配置与服务商状态；这里不会显示服务端原始错误正文。"],
       UNKNOWN_ERROR: ["暂时无法完成", "操作未完成，未保存新结果。", "请检查配置与输入；不能从现有信息确认原因。"]
     };
@@ -386,6 +406,101 @@
     }
     return out;
   }
+  function comfyUrl(s, pathName) {
+    var u = new URL(s.baseUrl);
+    u.pathname = pathName;
+    u.search = "";
+    u.hash = "";
+    return u.href;
+  }
+  function waitForComfy(ms, signal) {
+    return new Promise(function (resolve, reject) {
+      if (signal && signal.aborted) {
+        var aborted = new Error("cancelled"); aborted.name = "AbortError"; reject(aborted); return;
+      }
+      var timer = setTimeout(done, ms);
+      function done() { if (signal) signal.removeEventListener("abort", cancel); resolve(); }
+      function cancel() {
+        clearTimeout(timer);
+        signal.removeEventListener("abort", cancel);
+        var e = new Error("cancelled"); e.name = "AbortError"; reject(e);
+      }
+      if (signal) signal.addEventListener("abort", cancel, { once: true });
+    });
+  }
+  async function comfyJSON(url, options) {
+    var response;
+    try { response = await fetch(url, options); }
+    catch (e) {
+      if (e && e.name === "AbortError") throw e;
+      throw new ApiError("COMFYUI_UNAVAILABLE", "无法读取本机 ComfyUI 响应");
+    }
+    if (!response || !response.ok)
+      throw new ApiError("COMFYUI_HTTP_ERROR", "ComfyUI 请求失败", { status: response && response.status });
+    try { return await response.json(); }
+    catch (_) { throw new ApiError("COMFYUI_INVALID_RESPONSE", "ComfyUI 未返回有效 JSON"); }
+  }
+  async function runComfyWorkflow(s, signal) {
+    var workflow;
+    try { workflow = JSON.parse(s.workflowJson); }
+    catch (_) { throw new ApiError("COMFYUI_INVALID_RESPONSE", "导入的 workflow JSON 无效"); }
+    var prompt = await comfyJSON(comfyUrl(s, "/prompt"), {
+      method: "POST", credentials: "omit", redirect: "error", cache: "no-store",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: workflow }), signal: signal,
+    });
+    if (!prompt || typeof prompt.prompt_id !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(prompt.prompt_id))
+      throw new ApiError("COMFYUI_INVALID_RESPONSE", "ComfyUI 未返回有效 prompt_id");
+    var entry = null;
+    for (var attempt = 0; attempt < 120; attempt++) {
+      await waitForComfy(1200, signal);
+      var history = await comfyJSON(comfyUrl(s, "/history/" + encodeURIComponent(prompt.prompt_id)), {
+        method: "GET", credentials: "omit", redirect: "error", cache: "no-store",
+        headers: { Accept: "application/json" }, signal: signal,
+      });
+      entry = history && history[prompt.prompt_id];
+      if (entry && entry.status && entry.status.status_str === "error")
+        throw new ApiError("COMFYUI_WORKFLOW_FAILED", "ComfyUI workflow 执行失败");
+      if (entry && entry.outputs) break;
+    }
+    if (!entry || !entry.outputs) throw new ApiError("REQUEST_TIMEOUT", "等待 ComfyUI workflow 完成超时");
+    var images = [];
+    Object.keys(entry.outputs).forEach(function (nodeId) {
+      var list = entry.outputs[nodeId] && entry.outputs[nodeId].images;
+      if (Array.isArray(list)) list.forEach(function (image) { images.push(image); });
+    });
+    if (!images.length) throw new ApiError("COMFYUI_NO_OUTPUT", "ComfyUI workflow 没有图片输出");
+    if (images.length > 10) throw new ApiError("COMFYUI_INVALID_RESPONSE", "ComfyUI 图片输出数量超出限制");
+    var result = { items: [] };
+    for (var i = 0; i < images.length; i++) {
+      var image = images[i];
+      if (!image || typeof image.filename !== "string" || !image.filename || image.filename.length > 512 ||
+          (image.subfolder !== undefined && (typeof image.subfolder !== "string" || image.subfolder.length > 1024)) ||
+          (image.type !== undefined && ["output", "temp", "input"].indexOf(image.type) < 0))
+        throw new ApiError("COMFYUI_INVALID_RESPONSE", "ComfyUI 图片元数据无效");
+      var view = new URL(comfyUrl(s, "/view"));
+      view.searchParams.set("filename", image.filename);
+      view.searchParams.set("subfolder", image.subfolder || "");
+      view.searchParams.set("type", image.type || "output");
+      var response;
+      try {
+        response = await fetch(view.href, { method: "GET", credentials: "omit", redirect: "error", cache: "no-store", headers: { Accept: "image/*" }, signal: signal });
+      } catch (e) {
+        if (e && e.name === "AbortError") throw e;
+        throw new ApiError("COMFYUI_UNAVAILABLE", "无法读取 ComfyUI 输出图片");
+      }
+      if (!response || !response.ok)
+        throw new ApiError("COMFYUI_HTTP_ERROR", "读取 ComfyUI 输出图片失败", { status: response && response.status });
+      var data;
+      try { data = await blobData(await response.blob()); }
+      catch (e) {
+        if (e && e.name === "AbortError") throw e;
+        throw new ApiError("COMFYUI_INVALID_RESPONSE", "ComfyUI 输出不是受支持的栅格图片");
+      }
+      result.items.push({ id: "comfyui-" + (i + 1), name: "ComfyUI 方案 " + (i + 1), imageUrl: data });
+    }
+    return result;
+  }
   async function request(op, input, options) {
     var selected = active(op),
       opts = options || {},
@@ -416,6 +531,12 @@
     }, timeout);
     var phase = "reference-image";
     try {
+      if (selected.kind === "user" && c.protocol === "comfyui-api") {
+        phase = "request";
+        var comfy = await runComfyWorkflow(c, controller ? controller.signal : external);
+        phase = "response";
+        return contract.validateItems(comfy, global.location && global.location.origin);
+      }
       var raw = contract.validateRequest(input);
       raw =
         selected.kind === "user"
@@ -426,39 +547,8 @@
         headers = { Accept: "application/json" },
         body;
       var isOpen = selected.kind === "user" && ["openai-images", "sensenova-proxy"].indexOf(c.protocol) >= 0,
-        isStability = selected.kind === "user" && c.protocol === "stability-ai",
         p = isOpen ? openaiPayload(raw, c) : null;
-      if (isStability) {
-        p = openaiPayload(raw, c);
-        if (op === "edit" && !p.images.length)
-          throw new ApiError("INVALID_REQUEST", "Stability AI 图生图操作需要一张输入图片");
-        if (p.payload.n !== 1)
-          throw new ApiError("INVALID_REQUEST", "Stability AI 此端点每次只返回一张图片");
-        if (p.images.length > 1)
-          throw new ApiError("INVALID_REQUEST", "Stability AI 图生图仅支持一张输入图片；请移除多余参考图");
-        url = stabilityUrl();
-        headers.Authorization = "Bearer " + c.apiKey;
-        headers.Accept = "image/*";
-        var stabilityForm = new FormData();
-        stabilityForm.append("prompt", p.payload.prompt);
-        stabilityForm.append("model", "sd3.5-large");
-        if (p.images.length) {
-          var stabilityData = p.images[0],
-            stabilityParts = stabilityData.split(","),
-            stabilityMime = (stabilityParts[0].match(/^data:([^;]+)/i) || [])[1] || "image/png";
-          if (!/^image\/(png|jpeg|webp)$/i.test(stabilityMime))
-            throw new ApiError("INVALID_REQUEST", "Stability AI 图生图仅支持 PNG/JPEG/WebP 输入图片");
-          var stabilityBin = atob(stabilityParts[1]),
-            stabilityBytes = new Uint8Array(stabilityBin.length);
-          if (stabilityBytes.length > 8 * 1024 * 1024)
-            throw new ApiError("INVALID_REQUEST", "Stability AI 输入图片需小于 8 MiB");
-          for (var si = 0; si < stabilityBin.length; si++) stabilityBytes[si] = stabilityBin.charCodeAt(si);
-          stabilityForm.append("mode", "image-to-image");
-          stabilityForm.append("strength", "0.65");
-          stabilityForm.append("image", new Blob([stabilityBytes], { type: stabilityMime }), "source-image." + stabilityMime.split("/")[1].replace("jpeg", "jpg"));
-        }
-        body = stabilityForm;
-      } else if (isOpen) {
+      if (isOpen) {
         if (c.protocol === "sensenova-proxy" && (p.payload.n < 1 || p.payload.n > 4))
           throw new ApiError("INVALID_REQUEST", "SenseNova 同源代理每次仅支持 1–4 张");
         var hasImages = p.images.length;
@@ -529,19 +619,11 @@
         throw e;
       }
       if (!response || !response.ok)
-        throw await httpFailure(response, selected.kind === "user" && c.protocol === "sensenova-proxy", isStability);
+        throw await httpFailure(response, selected.kind === "user" && c.protocol === "sensenova-proxy");
       phase = "response";
       var result;
       try {
-        if (isStability) {
-          result = {
-            items: [{
-              id: "stability-image-1",
-              name: "方案 1",
-              imageUrl: await blobData(await response.blob()),
-            }],
-          };
-        } else result = await response.json();
+        result = await response.json();
       } catch (e) {
         if (e && e.name === "AbortError") throw e;
         if (e instanceof ApiError) throw e;
@@ -576,13 +658,9 @@
         external.removeEventListener("abort", abort);
     }
   }
-  // Only this site's fixed proxy may supply these two allowlisted static codes.
-  async function httpFailure(response, proxy, stability) {
+  // Only this site's fixed proxy may supply allowlisted static error codes.
+  async function httpFailure(response, proxy) {
     var status = response && response.status, code = "HTTP_ERROR";
-    if (stability && status === 403)
-      return new ApiError("STABILITY_CONTENT_FILTERED", "Stability AI 内容审核未通过（HTTP 403）", { status: 403 });
-    if (stability && status === 402)
-      return new ApiError("STABILITY_CREDITS_UNAVAILABLE", "Stability AI credits 不足（HTTP 402）", { status: 402 });
     if (proxy && status === 403) {
       if (response.headers && (response.headers.get("cf-mitigated") === "challenge" ||
           /text\/html/i.test(response.headers.get("content-type") || "")))
@@ -594,6 +672,19 @@
         else if (body && body.error && body.error.code === "upstream_error")
           code = "SENSENOVA_UPSTREAM_FORBIDDEN";
       } catch (_) { /* HTML/WAF/unknown JSON stays a generic HTTP error. */ }
+    }
+    if (proxy && [502, 503, 504].indexOf(status) >= 0) {
+      try {
+        var failure = await response.json(), safeCodes = {
+          upstream_error: "SENSENOVA_UPSTREAM_ERROR",
+          upstream_unavailable: "SENSENOVA_UPSTREAM_UNAVAILABLE",
+          invalid_upstream_response: "SENSENOVA_INVALID_UPSTREAM_RESPONSE",
+          upstream_timeout_or_cancelled: "SENSENOVA_UPSTREAM_TIMEOUT_OR_CANCELLED",
+          upstream_response_too_large: "SENSENOVA_UPSTREAM_RESPONSE_TOO_LARGE",
+        };
+        if (failure && failure.error && Object.prototype.hasOwnProperty.call(safeCodes, failure.error.code))
+          code = safeCodes[failure.error.code];
+      } catch (_) { /* Unknown/non-JSON responses remain generic and are never echoed. */ }
     }
     return new ApiError(code, "API 请求失败（HTTP " + (status || 0) + "）", { status: status });
   }
@@ -636,7 +727,7 @@
       var user = !!(
         s &&
         s.enabled &&
-        ["graphic-json", "openai-images", "sensenova-proxy", "stability-ai"].indexOf(s.protocol) >= 0
+        ["graphic-json", "openai-images", "sensenova-proxy", "comfyui-api"].indexOf(s.protocol) >= 0
       );
       return {
         mode: user ? "remote" : c.mode === "remote" ? "remote" : "demo",

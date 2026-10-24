@@ -49,6 +49,7 @@ function context() {
     generatePath: "/generate",
     editPath: "/edit",
     vectorizePath: "",
+    workflowJson: "",
   });
   for (const bad of [
     "api.test/x",
@@ -162,76 +163,62 @@ function context() {
     api.vectorize({ tool: "vectorize" }),
     (e) => e.code === "API_VECTORIZE_UNSUPPORTED",
   );
+  const workflowJson = JSON.stringify({ "1": { class_type: "MockNode", inputs: { text: "fixed API workflow" } } });
+  assert.throws(() => s.save({
+    enabled: true, protocol: "comfyui-api", baseUrl: "https://public.example",
+    workflowJson, generatePath: "/prompt", editPath: "", vectorizePath: "",
+  }), /仅允许 localhost/);
+  assert.throws(() => s.save({
+    enabled: true, protocol: "comfyui-api", baseUrl: "http://127.0.0.1:8188",
+    workflowJson: JSON.stringify({ nodes: [] }), generatePath: "/prompt",
+  }), /API 格式 workflow/);
+  assert.throws(
+    () => s.validateWorkflow('"' + "中".repeat(700000) + '"'),
+    /不能超过 2 MiB/,
+  );
   s.save({
-    enabled: true,
-    protocol: "stability-ai",
-    baseUrl: "https://attacker.invalid/ignored",
-    model: "user-model-is-ignored",
-    apiKey: "mock-stability-key",
+    enabled: true, protocol: "comfyui-api", baseUrl: "http://127.0.0.1:8188",
+    workflowJson, apiKey: "must-not-be-kept", generatePath: "/prompt",
   });
-  assert.equal(s.get().baseUrl, "https://api.stability.ai");
-  assert.equal(s.get().model, "sd3.5-large");
-  let stabilityCalls = 0;
-  c.fetch = async (url, o) => {
-    stabilityCalls++;
-    seen = { url, o };
-    return {
-      ok: true,
-      status: 200,
-      blob: async () => new Blob([Buffer.from("png")], { type: "image/png" }),
-    };
+  assert.equal(s.get().apiKey, "");
+  assert.equal(s.get().model, "");
+  assert.equal(api.status().protocol, "comfyui-api");
+  assert.equal(api.status().operations.generate, true);
+  assert.equal(api.status().operations.edit, false);
+  const comfyCalls = [];
+  const realSetTimeout = c.setTimeout;
+  c.setTimeout = (fn, ms) => realSetTimeout(fn, ms === 1200 ? 1 : ms);
+  c.fetch = async (url, o = {}) => {
+    comfyCalls.push({ url, o });
+    if (url.endsWith("/prompt")) {
+      const submitted = JSON.parse(o.body);
+      assert.deepEqual(JSON.parse(JSON.stringify(submitted.prompt)), JSON.parse(workflowJson));
+      assert.equal(o.method, "POST");
+      assert.equal(o.credentials, "omit");
+      assert.equal(o.headers.Authorization, undefined);
+      return { ok: true, status: 200, json: async () => ({ prompt_id: "mock-prompt-1" }) };
+    }
+    if (url.includes("/history/"))
+      return { ok: true, status: 200, json: async () => ({ "mock-prompt-1": { outputs: { "2": { images: [{ filename: "mock.png", subfolder: "", type: "output" }] } } } }) };
+    if (url.includes("/view?"))
+      return { ok: true, status: 200, blob: async () => new Blob([Buffer.from("png")], { type: "image/png" }) };
+    throw new Error("unexpected ComfyUI mock URL");
   };
-  const stabilityGenerated = await api.generate({ tool: "logo", brand: "mock" });
-  assert.equal(seen.url, "https://api.stability.ai/v2beta/stable-image/generate/sd3");
-  assert.equal(seen.o.method, "POST");
-  assert.equal(seen.o.credentials, "omit");
-  assert.equal(seen.o.redirect, "error");
-  assert.equal(seen.o.headers.Authorization, "Bearer mock-stability-key");
-  assert.equal(seen.o.headers.Accept, "image/*");
-  assert.equal(seen.o.headers["Content-Type"], undefined);
-  assert.equal(seen.o.body.get("model"), "sd3.5-large");
-  assert.match(seen.o.body.get("prompt"), /品牌: mock/);
-  assert.match(stabilityGenerated.items[0].imageUrl, /^data:image\/png;base64,/);
-  assert.equal(stabilityCalls, 1);
-  await assert.rejects(
-    api.generate({ tool: "logo", count: 2 }),
-    (e) => e.code === "INVALID_REQUEST",
-  );
-  await assert.rejects(
-    api.generate({ tool: "logo", references: ["data:image/png;base64,AAAA", "data:image/png;base64,AAAA"] }),
-    (e) => e.code === "INVALID_REQUEST",
-  );
-  await assert.rejects(
-    api.edit({ tool: "edit" }),
-    (e) => e.code === "INVALID_REQUEST",
-  );
-  assert.equal(stabilityCalls, 1, "unsupported Stability inputs must be rejected before fetch");
-  c.fetch = async () => ({ ok: false, status: 403 });
-  await assert.rejects(
-    api.generate({ tool: "logo" }),
-    (e) => e.code === "STABILITY_CONTENT_FILTERED" && e.details.status === 403,
-  );
-  c.fetch = async () => ({ ok: false, status: 402 });
-  await assert.rejects(
-    api.generate({ tool: "logo" }),
-    (e) => e.code === "STABILITY_CREDITS_UNAVAILABLE" && e.details.status === 402,
-  );
-  c.fetch = async (url, o) => {
-    seen = { url, o };
-    return {
-      ok: true,
-      status: 200,
-      blob: async () => new Blob([Buffer.from("png")], { type: "image/png" }),
-    };
-  };
-  await api.generate({ tool: "logo", sourceImage: "data:image/png;base64,AAAA" });
-  assert.equal(seen.o.body.get("mode"), "image-to-image");
-  assert.equal(seen.o.body.get("strength"), "0.65");
-  assert.equal(seen.o.body.get("image").type, "image/png");
-  assert.equal(seen.o.body.get("image").name, "source-image.png");
+  const comfyGenerated = await api.generate({
+    tool: "logo", brand: "not-mapped", count: 99,
+    sourceImage: "https://example.invalid/not-fetched.png",
+    references: ["https://example.invalid/not-fetched-reference.png"],
+  });
+  assert.equal(comfyCalls.length, 3);
+  assert.equal(comfyCalls[0].url, "http://127.0.0.1:8188/prompt");
+  assert.match(comfyCalls[1].url, /\/history\/mock-prompt-1$/);
+  assert.match(comfyGenerated.items[0].imageUrl, /^data:image\/png;base64,/);
+  await assert.rejects(api.edit({ tool: "edit" }), (e) => e.code === "API_OPERATION_UNSUPPORTED");
+  assert.equal(comfyCalls.length, 3, "unsupported operation must not call ComfyUI");
+  c.setTimeout = realSetTimeout;
   await assert.rejects(
     api.vectorize({ tool: "vectorize" }),
-    (e) => e.code === "API_VECTORIZE_UNSUPPORTED",
+    (e) => e.code === "API_OPERATION_UNSUPPORTED",
   );
   s.save({
     enabled: true,

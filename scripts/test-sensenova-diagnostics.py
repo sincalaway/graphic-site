@@ -59,7 +59,18 @@ with sync_playwright() as p:
         result = page.evaluate('GraphicAPI.generate({tool:"logo",count:1}).then(()=>null,e=>GraphicAPI.errorInfo(e))')
         assert result['code'] == mapped and result['status'] == 403
         assert KEY not in json.dumps(result)
-    assert len(calls) == 9, 'no implicit retries or save-time requests'
+    for upstream, status, mapped in [
+        ('upstream_error', 502, 'SENSENOVA_UPSTREAM_ERROR'),
+        ('upstream_unavailable', 502, 'SENSENOVA_UPSTREAM_UNAVAILABLE'),
+        ('invalid_upstream_response', 502, 'SENSENOVA_INVALID_UPSTREAM_RESPONSE'),
+        ('upstream_timeout_or_cancelled', 504, 'SENSENOVA_UPSTREAM_TIMEOUT_OR_CANCELLED'),
+    ]:
+        scenario.update(status=status, body={'error': {'code': upstream, 'message': KEY}})
+        result = page.evaluate('GraphicAPI.generate({tool:"logo",count:1}).then(()=>null,e=>GraphicAPI.errorInfo(e))')
+        assert result['code'] == mapped and result['status'] == status, result
+        assert upstream in (result['message'] + result['hint'])
+        assert KEY not in json.dumps(result), 'raw upstream details must not reach UI'
+    assert len(calls) == 13, 'no implicit retries or save-time requests'
     assert not errors, errors
     browser.close()
-print('SenseNova diagnostics offline UI passed: explicit GET, current form key, no persistence, model present/absent, static 403 mapping, no leaks/retries')
+print('SenseNova diagnostics offline UI passed: explicit GET, current form key, no persistence, model present/absent, static 403/502-504 mapping, no leaks/retries')

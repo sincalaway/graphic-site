@@ -10,8 +10,9 @@
     generatePath: "/generate",
     editPath: "/edit",
     vectorizePath: "",
+    workflowJson: "",
   };
-  var PROTOCOLS = ["graphic-json", "openai-images", "sensenova-proxy", "stability-ai"];
+  var PROTOCOLS = ["graphic-json", "openai-images", "sensenova-proxy", "comfyui-api"];
   function copy(v) {
     var out = {};
     Object.keys(DEFAULTS).forEach(function (k) {
@@ -59,20 +60,43 @@
       return false;
     }
   }
+  function comfyBase(v) {
+    if (typeof v !== "string" || !v || /[\x00-\x20\\%?#]/.test(v)) return false;
+    try {
+      var u = new URL(v);
+      return !u.username && !u.password && !u.search && !u.hash && u.pathname === "/" &&
+        (u.protocol === "http:" || u.protocol === "https:") &&
+        ["localhost", "127.0.0.1", "[::1]"].indexOf(u.hostname) >= 0;
+    } catch (_) { return false; }
+  }
+  function validWorkflow(raw) {
+    var size = typeof raw === "string"
+      ? typeof Blob === "function" ? new Blob([raw]).size : raw.length
+      : Infinity;
+    if (typeof raw !== "string" || size > 2 * 1024 * 1024)
+      throw new Error("ComfyUI API workflow 不能超过 2 MiB");
+    var workflow;
+    try { workflow = JSON.parse(raw); }
+    catch (_) { throw new Error("请导入有效的 ComfyUI API workflow JSON"); }
+    if (!workflow || typeof workflow !== "object" || Array.isArray(workflow))
+      throw new Error("workflow 顶层必须是 ComfyUI API 节点对象");
+    var ids = Object.keys(workflow);
+    if (!ids.length || ids.length > 5000) throw new Error("workflow 节点数量无效");
+    ids.forEach(function (id) {
+      var node = workflow[id];
+      if (!/^[A-Za-z0-9_-]{1,64}$/.test(id) || !node || typeof node !== "object" ||
+          typeof node.class_type !== "string" || !node.class_type ||
+          !node.inputs || typeof node.inputs !== "object" || Array.isArray(node.inputs))
+        throw new Error("这不是 ComfyUI 导出的 API 格式 workflow JSON");
+    });
+    return workflow;
+  }
   function valid(value) {
     if (!value || typeof value !== "object" || Array.isArray(value))
       throw new Error("API 设置无效");
     var v = copy(Object.assign({}, DEFAULTS, value));
     if (typeof v.enabled !== "boolean" || PROTOCOLS.indexOf(v.protocol) < 0)
       throw new Error("API 设置无效");
-    if (v.protocol === "stability-ai") {
-      // Stability AI has a dedicated endpoint and model ID; do not accept a user-supplied target.
-      v.baseUrl = "https://api.stability.ai";
-      v.model = "sd3.5-large";
-      v.generatePath = "/v2beta/stable-image/generate/sd3";
-      v.editPath = "/v2beta/stable-image/generate/sd3";
-      v.vectorizePath = "";
-    }
     if (v.protocol === "sensenova-proxy") {
       var origin = global.location && global.location.origin;
       if (!origin || !base(origin)) throw new Error("同源代理需要 HTTPS 或 localhost 页面");
@@ -83,20 +107,32 @@
       v.editPath = "/images/edits";
       v.vectorizePath = "";
     }
-    if (v.enabled && !base(v.baseUrl)) throw new Error("API 服务地址无效");
-    if (!v.enabled && v.baseUrl !== "" && !base(v.baseUrl))
+    if (v.protocol === "comfyui-api") {
+      v.model = "";
+      v.apiKey = "";
+      v.generatePath = "/prompt";
+      v.editPath = "";
+      v.vectorizePath = "";
+      if (v.workflowJson) validWorkflow(v.workflowJson);
+      if (v.enabled && !v.workflowJson) throw new Error("请先导入 ComfyUI 导出的 API workflow JSON");
+      if (v.enabled && !comfyBase(v.baseUrl)) throw new Error("ComfyUI 地址仅允许 localhost / 127.0.0.1 / [::1]");
+    } else if (typeof v.workflowJson !== "string" || v.workflowJson !== "") {
+      v.workflowJson = "";
+    }
+    if (v.protocol !== "comfyui-api" && v.enabled && !base(v.baseUrl)) throw new Error("API 服务地址无效");
+    if (v.protocol !== "comfyui-api" && !v.enabled && v.baseUrl !== "" && !base(v.baseUrl))
       throw new Error("API 服务地址无效");
     if (
       typeof v.model !== "string" ||
       v.model.length > 200 ||
-      (v.enabled && !v.model.trim())
+      (v.enabled && v.protocol !== "comfyui-api" && !v.model.trim())
     )
       throw new Error("API 模型必须填写");
     if (
       typeof v.apiKey !== "string" ||
       v.apiKey.length > 4096 ||
       /[\x00-\x20\x7f]/.test(v.apiKey) ||
-      (v.enabled && ["openai-images", "sensenova-proxy", "stability-ai"].indexOf(v.protocol) >= 0 && !v.apiKey)
+      (v.enabled && ["openai-images", "sensenova-proxy"].indexOf(v.protocol) >= 0 && !v.apiKey)
     )
       throw new Error("API key 必须填写且不能包含空白或控制字符");
     if (
@@ -115,6 +151,7 @@
     }
   }
   var api = {
+    validateWorkflow: function (raw) { validWorkflow(raw); return true; },
     get: function () {
       var s = storage(),
         raw;

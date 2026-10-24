@@ -1,6 +1,6 @@
 # Graphic API 集成说明
 
-本文档描述 Graphic 新增的 **SenseNova 专用同源代理**、保留的浏览器直连配置，以及高级静态同源模式。它们都是本项目自己的适配边界，不是原站后端文档；原站公开资料不证明其具体供应商、模型或私有接口；这里的 SenseNova 集成是本项目的独立实现。
+本文档描述 Graphic 的 **SenseNova 专用同源代理**、ComfyUI 本机 API workflow、保留的浏览器直连配置，以及高级静态同源模式。它们都是本项目自己的适配边界，不是原站后端文档；原站公开资料不证明其具体供应商、模型或私有接口；这里的 SenseNova 集成是本项目的独立实现。
 
 ## SenseNova 专用同源模式（`protocol='sensenova-proxy'`）
 
@@ -88,20 +88,20 @@ Function 最多读取 20 MiB 上游响应，只保留 `data[].b64_json` 或安�
 
 `sensenova-proxy` 不支持 `vectorize`，不把矢量化伪装成生成或编辑；不支持任意上游路径、任意模型、任意 provider、重定向、图像 POST 自动重试、服务端保存 key、敏感内容日志、响应回显或服务器端 SenseNova secret binding。仅允许上文定义的模型 GET 有限重试与脱敏诊断。
 
-## Stability AI 专用直连（`protocol='stability-ai'`）
+## ComfyUI 本机 API workflow（`protocol='comfyui-api'`）
 
-此模式固定请求官方 `POST https://api.stability.ai/v2beta/stable-image/generate/sd3`，模型固定为 `sd3.5-large`。不允许自定义上游地址、模型或路径，也不把它作为通用 OpenAI 兼容适配。官方请求使用 `multipart/form-data`、`Authorization: Bearer <key>`、`Accept: image/*`；表单字段包含 `prompt` 和 `model`，成功响应为原始图片字节，页面校验栅格 MIME 后转换为项目图片结果。参见 [Stability AI Stable Diffusion 3.5 API 文档](https://docs.stability.ai/api-reference/generate/stable-diffusion-35)。
+此模式连接用户本机 ComfyUI，配置地址仅允许 `http://localhost`、`http://127.0.0.1` 或 `http://[::1]`（以及对应 HTTPS loopback），默认 `http://127.0.0.1:8188`。配置面板要求导入 ComfyUI 导出的 **API 格式 workflow JSON**；校验其为节点 ID 到 `{class_type, inputs}` 的对象，并限制文件大小为 2 MiB、节点数最多 5,000。导入与保存只在浏览器本地校验并写入当前标签页 `sessionStorage`，不会探测本机服务或执行 workflow。
 
-纯文本生成固定请求 1 张。图生图复用同一端点：只接受一张 PNG/JPEG/WebP 源图或参考图，提交 `mode=image-to-image`、`strength=0.65` 和 `image`；多图、非支持格式、超过 8 MiB 的输入及 `count` 非 1 均在本地拒绝。此适配不提供 `vectorize`。供应商文档规定总请求上限 10 MiB，本地对单张输入采用更严的 8 MiB 上限。每次真实生成可能消耗供应商 credits；本项目不自动重试。API key 只由当前配置表单提供并保存在当前标签页 `sessionStorage`，不读取其他已保存密钥，不写入源代码、仓库或服务器。
+用户之后主动点击生成时，前端按标准 ComfyUI API 流程将导入内容原样作为 `prompt` 提交至 `POST /prompt`，再轮询 `GET /history/{prompt_id}` 并通过 `GET /view` 读取输出图片。请求不会自动重试。**当前页面的品牌、提示词、参考图、模型与批量数量不会自动映射或写入 workflow**；项目不猜节点 ID、模型或输入字段。要对接某一具体工作流，需要先提供并导入由 ComfyUI 导出的 API JSON；若要让页面动态修改节点输入，还需按该工作流明确字段映射。本模式当前只支持运行生成 workflow，不支持续改或矢量化。
 
-保存配置只做本地校验，不发请求；真实请求只在用户随后主动生成/图生图时发出。此模式为浏览器直连，受浏览器同源策略限制；若 Stability AI 未允许当前页面 origin 的 CORS 请求，浏览器将无法完成调用。本地 mock 测试不验证供应商账号权限、线上 CORS 或计费。
+页面通过浏览器直连本机服务，需 ComfyUI 可从页面的浏览器上下文访问并按需允许 CORS。`svg.devs.li` 等 HTTPS 页面访问 `http://127.0.0.1:8188` 可能被混合内容、本地网络权限或浏览器策略拦截；仓库实现了配置与 API 框架，不能保证每个浏览器环境都能连通。本地 mock 测试不访问真实 ComfyUI，也不产生图片。
 
 
 ## 1. 浏览器直连模式：默认状态与 UI 入口
 
 默认模式为 `demo`，不发起网络请求。顶部状态栏 **“配置 API”** 和“更多”菜单的 **“API 接入状态”** 打开同一个面板。面板可填写：
 
-- 协议：`graphic-json`、`openai-images` 或专用 `stability-ai`；也可清除后回到 `demo`。
+- 协议：`graphic-json`、`openai-images`、`comfyui-api` 或专用 `sensenova-proxy`；也可清除后回到 `demo`。
 - `baseUrl`：服务地址。
 - `model`：模型名。
 - `apiKey`：密钥（按协议要求）。
@@ -114,18 +114,15 @@ Function 最多读取 20 MiB 上游响应，只保留 `data[].b64_json` 或安�
 
 ## 2. 支持矩阵
 
-| 能力/限制 | demo | graphic-json | openai-images | stability-ai |
-|---|---|---|---|---|
-| 默认状态 | 是 | 否 | 否 | 否 |
-| 传输 | 无 | `POST` JSON | OpenAI 兼容 Images API | 固定 Stability AI multipart API |
-| `baseUrl` | 不适用 | 必填 | 必填；应已含 `/v1` 或对应 API 前缀，**不会自动补** | 固定 `https://api.stability.ai` |
-| `model` | 不适用 | 必填 | 必填；不假定具体模型 | 固定 `sd3.5-large` |
-| Bearer key | 不发送 | 可选 | 必填 | 必填 |
-| 生成路径 | 不请求 | 默认 `/generate` | `/images/generations` | `/v2beta/stable-image/generate/sd3` |
-| 编辑路径 | 不请求 | 默认 `/edit` | `/images/edits`（有 `sourceImage` 或 `references` 时） | 同一生成端点，单图 image-to-image，`strength=0.65` |
-| `vectorize` | 本地/demo 行为 | 可选 `vectorizePath` | 明确不支持，返回 `API_VECTORIZE_UNSUPPORTED` | 明确不支持，返回 `API_VECTORIZE_UNSUPPORTED` |
-| 参考图/源图 | 本地保留 | JSON 中发送 | 生成无图时 JSON；有图时 multipart `image[]` | 0 或 1 张 PNG/JPEG/WebP；图生图 multipart `image` |
-| 返回 | 本地演示 | `items` 栅格结果 | `data[].b64_json` 或 `data[].url`，转为栅格 Data URL | 原始 `image/*` 字节，转为栅格 Data URL |
+| 能力/限制 | demo | graphic-json | openai-images | sensenova-proxy | comfyui-api |
+|---|---|---|---|---|---|
+| 默认状态 | 是 | 否 | 否 | 否 | 否 |
+| 传输 | 无 | `POST` JSON | OpenAI 兼容 Images API | 固定同源代理 | ComfyUI `/prompt`、`/history`、`/view` |
+| 地址 | 不适用 | HTTPS 或本机 HTTP | HTTPS 或本机 HTTP | 固定同源 | 仅 loopback；默认 `http://127.0.0.1:8188` |
+| 模型/key | 不适用 | 自定义/可选 key | 用户指定模型与 key | 固定模型，当前页面 key | 不单独配置；由导入 workflow 决定 |
+| 生成 | 本地演示 | 自定义路径 | `/images/generations` | `/images/generations` | 原样提交 API workflow |
+| 编辑/转换 | 本地演示 | 可配置 | Images 不支持转换 | 不支持 | 暂不支持 |
+| 结果 | 本地演示 | `items` | `data[].b64_json` / `data[].url` | 白名单栅格结果 | ComfyUI history 中的图片输出 |
 
 `openai-images` 是 OpenAI **Images 协议兼容**适配，不是“任意供应商 API”适配。供应商必须支持对应的路径、`model`、`n` 以及实际发送的图片字段；项目不替供应商猜测模型名或字段兼容性。`vectorize` 不会伪装成编辑或生成。
 
@@ -204,7 +201,7 @@ Function 最多读取 20 MiB 上游响应，只保留 `data[].b64_json` 或安�
 { title, message, hint, code, status }
 ```
 
-其中 `title`、`message`、`hint`、`code` 都是安全静态文字，`status` 仅为 HTTP 整数或 `null`。兼容代码仍包括 `NETWORK_ERROR` 和 `HTTP_ERROR`；HTTP 细分使用 `e.details.status`（不从错误正文猜测），并在 `errorInfo` 结果中以 `status` 提供。还可能出现 `REQUEST_CANCELLED`、`REQUEST_TIMEOUT`、`INVALID_RESPONSE` 和 `IMAGE_FETCH_FAILED`。网络失败无法由浏览器可靠区分 CORS、DNS、TLS、离线或重定向，因此不要据提示断定具体根因。
+其中 `title`、`message`、`hint`、`code` 都是安全静态文字，`status` 仅为 HTTP 整数或 `null`。兼容代码仍包括 `NETWORK_ERROR` 和 `HTTP_ERROR`；HTTP 细分使用 `e.details.status`，不从未知错误正文猜测。**唯一例外**是固定的 SenseNova 同源代理：对于 HTTP 502/503/504，前端只解析自身静态 `error.code` 的 allowlist，并显示 `upstream_error`、`upstream_unavailable`、`invalid_upstream_response`、`upstream_timeout_or_cancelled`（另含响应过大码）；未知码和非 JSON 响应仍回落通用 `HTTP_ERROR`。错误正文、URL 和 key 不会显示。还可能出现 `REQUEST_CANCELLED`、`REQUEST_TIMEOUT`、`INVALID_RESPONSE` 和 `IMAGE_FETCH_FAILED`。网络失败无法由浏览器可靠区分 CORS、DNS、TLS、离线或重定向，因此不要据提示断定具体根因。
 
 | 代码/状态 | 常见含义与先查事项 |
 |---|---|
@@ -216,6 +213,7 @@ Function 最多读取 20 MiB 上游响应，只保留 `data[].b64_json` 或安�
 | `415` | Content-Type、multipart 协议或图片媒体类型不受支持；不要手工覆盖 multipart boundary。 |
 | `429` | 限流、并发限制或额度不足；检查服务商限额和账单。 |
 | `5xx` | 服务端或上游暂时失败；查看服务状态与服务端记录。 |
+| SenseNova `502` / `503` / `504` | 固定同源代理会按 allowlist 显示 `upstream_error`、`upstream_unavailable`、`invalid_upstream_response`、`upstream_timeout_or_cancelled` 或 `upstream_response_too_large`；未知 code 不会被原样显示。 |
 | `NETWORK_ERROR` | 浏览器没有拿到可读取的网络响应；可能与 CORS、DNS、TLS、离线或重定向有关，但本项目不能区分。 |
 | `INVALID_RESPONSE` | HTTP 成功但 JSON 结构、`data`/`items` 或图片结果不符合契约。 |
 | `IMAGE_FETCH_FAILED` | `data[].url` 图片无法按 CORS/HTTPS 规则下载或无法转为受支持的栅格图。 |

@@ -1,6 +1,6 @@
 # Graphic：全流程 Logo 创作与图标素材库
 
-Graphic 是一个**本地优先**的网站。默认进入 Logo 创作，保留原有图标素材库、参考图和作品管理功能；默认使用本地 demo，不会自动调用模型、上传数据或扣费。现在也可以从页面配置受支持的真实 API，支持 Stability AI SD3.5 Large 专用直连、SenseNova 专用同源代理或高级浏览器直连：只有你明确保存配置并首次点击生成/编辑时才会发请求。
+Graphic 是一个**本地优先**的网站。默认进入 Logo 创作，保留原有图标素材库、参考图和作品管理功能；默认使用本地 demo，不会自动调用模型、上传数据或扣费。现在也可以从页面配置受支持的 API，包括 SenseNova 专用同源代理、ComfyUI 本机 API workflow 或高级浏览器直连：保存配置不会发请求，只有随后明确点击生成/编辑才会连接相应服务。
 
 ## 当前功能
 
@@ -19,18 +19,20 @@ Graphic 是一个**本地优先**的网站。默认进入 Logo 创作，保留�
 
 顶部状态栏的 **“配置 API”**，以及“更多”菜单中的 **“API 接入状态”** 都会打开同一个配置面板。手机上按以下步骤操作：
 
-1. 打开 **配置 API**，选择协议并填写协议所需字段：`graphic-json` / `openai-images` 是浏览器直连；专用 `stability-ai` 固定直连 `https://api.stability.ai/v2beta/stable-image/generate/sd3` 和模型 `sd3.5-large`；专用 `sensenova-proxy` 仅使用同源 `/api/sensenova`，模型固定为 `sensenova-u1.5-lite`，`baseUrl` 运行时固定为 `location.origin + '/api/sensenova'`，不可改成通用代理。
+1. 打开 **配置 API**，选择协议并填写协议所需字段：`graphic-json` / `openai-images` 是浏览器直连；专用 `sensenova-proxy` 仅使用同源 `/api/sensenova`，模型固定为 `sensenova-u1.5-lite`，`baseUrl` 运行时固定为 `location.origin + '/api/sensenova'`，不可改成通用代理。
 2. 选择 `sensenova-proxy` 时，只在当前页面输入 SenseNova key；它仅放入当前标签页 `sessionStorage`，不读取平台保存的密钥；刷新时可读取本页会话配置。阅读安全提示并勾选确认（只有随后点击生成/编辑，key、提示词和使用的图片才会发送，可能计费）。
 3. 点 **保存配置**。这一步只做本地格式校验和保存，不测试、不收费、不发请求。
    UI 将另提供 **“只读检查模型列表”** 按钮：使用当前表单中的 key 请求固定同源 `GET /api/sensenova/models`，只读取模型 ID，用于检查接口是否可访问以及是否包含 `sensenova-u1.5-lite`。这项检查不保存 key、不发图；列表可访问不证明图片生成权限或模型一定能生成。
 4. 回到工具填写提示词/参考图，第一次点 **生成** 或 **编辑** 才会请求服务。失败不会默默回退 demo，也不会自动重试。
 5. 不再使用时点 **清除配置**；配置会清空并回到 demo。
 
+**ComfyUI 本机接口**：选择 `ComfyUI · 本机 API workflow`，地址填写 `http://127.0.0.1:8188`（或本机实际监听地址），再导入从 ComfyUI 导出的 **API 格式 workflow JSON**。导入与保存只在当前标签页校验和保存文件内容，不连接 ComfyUI；之后点生成才会把 workflow 原样提交并轮询历史、读取图片。项目不会猜测模型/节点，也不会把当前页面的品牌、提示词或参考图自动映射进 workflow；因此需要用户提供并导入适用于目标工作流的 API JSON。只有 workflow 内已有的提示词和节点参数会运行。此模式目前只支持生成，不支持续改或矢量化。若站点使用 HTTPS，浏览器访问本机 `http://127.0.0.1:8188` 可能被本地网络权限、混合内容或 ComfyUI 的 CORS 设置拦截；仓库提供配置框架，不保证已在所有浏览器环境连通。
+
 配置只放在当前标签页的 `sessionStorage`：刷新通常保留，关闭标签页通常清除；浏览器的“恢复标签页”或复制标签页可能恢复或复制会话数据，因此不要把它当作密钥保险箱。key 仍能被页面脚本、浏览器扩展或 XSS 读取。建议使用低额度、短期 key，或使用自己的后端代理；绝不要把 key 写入源文件、作品、日志或仓库。
 
-支持的协议、Stability AI 与 SenseNova 专用请求/响应、地址限制、CORS、错误诊断和费用边界见 **[API_INTEGRATION.md](./API_INTEGRATION.md)**。Stability AI 的图生图限制为单张 PNG/JPEG/WebP 输入，固定 strength 0.65；本次不读取真实 key、不调用真实生成或编辑，自动化测试只用 mock 验证配置与传输行为。错误提示不会暴露原始错误 body、URL 或 key；图片请求不会自动重试或回退。失败或超时后服务端可能仍在处理，重试前先查服务端记录。
+支持的协议、SenseNova 专用请求/响应、ComfyUI workflow、地址限制、CORS、错误诊断和费用边界见 **[API_INTEGRATION.md](./API_INTEGRATION.md)**。本次不读取真实 key、不调用真实生成或编辑，自动化测试只用 mock 验证配置与传输行为。错误提示不会暴露原始错误 body、URL 或 key；图像请求不会自动重试或回退。失败或超时后服务端可能仍在处理，重试前先查服务端记录。
 
-固定同源 `GET /api/sensenova/models` 只转发到 `https://token.sensenova.cn/v1/models`，成功响应裁剪为 `{ "data": [{ "id": "..." }] }`，仅保留模型 ID；缺少或无效 `Authorization: Bearer <key>` 返回 `401`。它与生成/编辑共用同源来源、Fetch Metadata、禁止重定向、无开放 CORS 和静态错误边界。`403` 通过自身安全 `error.code` 区分 `origin_not_allowed` 与 `upstream_error`；不能据此或据模型列表断定图片生成能力。
+固定同源 `GET /api/sensenova/models` 只转发到 `https://token.sensenova.cn/v1/models`，成功响应裁剪为 `{ "data": [{ "id": "..." }] }`，仅保留模型 ID；缺少或无效 `Authorization: Bearer <key>` 返回 `401`。它与生成/编辑共用同源来源、Fetch Metadata、禁止重定向、无开放 CORS 和静态错误边界。`403` 通过自身安全 `error.code` 区分来源拒绝与上游拒绝；`502`–`504` 的 `upstream_error`、`upstream_unavailable`、`invalid_upstream_response`、`upstream_timeout_or_cancelled` 等白名单码会在页面细分显示，未知码及原始正文不会展示。模型列表可访问不代表图片生成能力。
 
 ## 本地数据与演示边界
 
@@ -42,7 +44,7 @@ Graphic 是一个**本地优先**的网站。默认进入 Logo 创作，保留�
 
 仍保留 `public/api-config.js` 的旧静态**同源 `remote` 模式**，供高级用户接入自有后端；它与现在的页面配置 UI 是两条路径。旧模式中的密钥不应放进静态文件，UI 模式优先，详细区别和兼容字段见 API 文档。
 
-`public/api-config.js`、`public/api-contract.js` 和 `public/api-adapter.js` 负责配置、契约与传输；demo 默认不发网络请求。UI 支持 `stability-ai`（固定 Stability AI SD3.5 Large 端点）、`sensenova-proxy`（固定目标的专用同源模式）、`graphic-json`（自有 POST JSON）与 `openai-images`（OpenAI 兼容 Images 协议，非任意供应商协议）。
+`public/api-config.js`、`public/api-contract.js` 和 `public/api-adapter.js` 负责配置、契约与传输；demo 默认不发网络请求。UI 支持 `sensenova-proxy`（固定目标的专用同源模式）、`comfyui-api`（本机 API workflow 原样提交）、`graphic-json`（自有 POST JSON）与 `openai-images`（OpenAI 兼容 Images 协议，非任意供应商协议）。
 
 原站公开资源的 REA 分析见 **[公开证据摘要](./docs/REA_EVIDENCE.md)**：可确认档位配置和客户端流程，无法确认私有服务端实现、具体模型或成功推理。智能/专家是产品档位，不是模型名；本项目的契约也不是原站后端协议。
 
