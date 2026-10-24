@@ -88,12 +88,20 @@ Function 最多读取 20 MiB 上游响应，只保留 `data[].b64_json` 或安�
 
 `sensenova-proxy` 不支持 `vectorize`，不把矢量化伪装成生成或编辑；不支持任意上游路径、任意模型、任意 provider、重定向、图像 POST 自动重试、服务端保存 key、敏感内容日志、响应回显或服务器端 SenseNova secret binding。仅允许上文定义的模型 GET 有限重试与脱敏诊断。
 
+## Stability AI 专用直连（`protocol='stability-ai'`）
+
+此模式固定请求官方 `POST https://api.stability.ai/v2beta/stable-image/generate/sd3`，模型固定为 `sd3.5-large`。不允许自定义上游地址、模型或路径，也不把它作为通用 OpenAI 兼容适配。官方请求使用 `multipart/form-data`、`Authorization: Bearer <key>`、`Accept: image/*`；表单字段包含 `prompt` 和 `model`，成功响应为原始图片字节，页面校验栅格 MIME 后转换为项目图片结果。参见 [Stability AI Stable Diffusion 3.5 API 文档](https://docs.stability.ai/api-reference/generate/stable-diffusion-35)。
+
+纯文本生成固定请求 1 张。图生图复用同一端点：只接受一张 PNG/JPEG/WebP 源图或参考图，提交 `mode=image-to-image`、`strength=0.65` 和 `image`；多图、非支持格式、超过 8 MiB 的输入及 `count` 非 1 均在本地拒绝。此适配不提供 `vectorize`。供应商文档规定总请求上限 10 MiB，本地对单张输入采用更严的 8 MiB 上限。每次真实生成可能消耗供应商 credits；本项目不自动重试。API key 只由当前配置表单提供并保存在当前标签页 `sessionStorage`，不读取其他已保存密钥，不写入源代码、仓库或服务器。
+
+保存配置只做本地校验，不发请求；真实请求只在用户随后主动生成/图生图时发出。此模式为浏览器直连，受浏览器同源策略限制；若 Stability AI 未允许当前页面 origin 的 CORS 请求，浏览器将无法完成调用。本地 mock 测试不验证供应商账号权限、线上 CORS 或计费。
+
 
 ## 1. 浏览器直连模式：默认状态与 UI 入口
 
 默认模式为 `demo`，不发起网络请求。顶部状态栏 **“配置 API”** 和“更多”菜单的 **“API 接入状态”** 打开同一个面板。面板可填写：
 
-- 协议：`graphic-json` 或 `openai-images`；也可清除后回到 `demo`。
+- 协议：`graphic-json`、`openai-images` 或专用 `stability-ai`；也可清除后回到 `demo`。
 - `baseUrl`：服务地址。
 - `model`：模型名。
 - `apiKey`：密钥（按协议要求）。
@@ -106,18 +114,18 @@ Function 最多读取 20 MiB 上游响应，只保留 `data[].b64_json` 或安�
 
 ## 2. 支持矩阵
 
-| 能力/限制 | demo | graphic-json | openai-images |
-|---|---|---|---|
-| 默认状态 | 是 | 否 | 否 |
-| 传输 | 无 | `POST` JSON | OpenAI 兼容 Images API |
-| `baseUrl` | 不适用 | 必填 | 必填；应已含 `/v1` 或对应 API 前缀，**不会自动补** |
-| `model` | 不适用 | 必填 | 必填；不假定具体模型 |
-| Bearer key | 不发送 | 可选 | 必填 |
-| 生成路径 | 不请求 | 默认 `/generate` | `/images/generations` |
-| 编辑路径 | 不请求 | 默认 `/edit` | `/images/edits`（有 `sourceImage` 或 `references` 时） |
-| `vectorize` | 本地/demo 行为 | 可选 `vectorizePath` | 明确不支持，返回 `API_VECTORIZE_UNSUPPORTED` |
-| 参考图/源图 | 本地保留 | JSON 中发送 | 生成无图时 JSON；有 `sourceImage` 或 `references` 时使用 multipart `image[]` |
-| 返回 | 本地演示 | `items` 栅格结果 | `data[].b64_json` 或 `data[].url`，转为栅格 Data URL |
+| 能力/限制 | demo | graphic-json | openai-images | stability-ai |
+|---|---|---|---|---|
+| 默认状态 | 是 | 否 | 否 | 否 |
+| 传输 | 无 | `POST` JSON | OpenAI 兼容 Images API | 固定 Stability AI multipart API |
+| `baseUrl` | 不适用 | 必填 | 必填；应已含 `/v1` 或对应 API 前缀，**不会自动补** | 固定 `https://api.stability.ai` |
+| `model` | 不适用 | 必填 | 必填；不假定具体模型 | 固定 `sd3.5-large` |
+| Bearer key | 不发送 | 可选 | 必填 | 必填 |
+| 生成路径 | 不请求 | 默认 `/generate` | `/images/generations` | `/v2beta/stable-image/generate/sd3` |
+| 编辑路径 | 不请求 | 默认 `/edit` | `/images/edits`（有 `sourceImage` 或 `references` 时） | 同一生成端点，单图 image-to-image，`strength=0.65` |
+| `vectorize` | 本地/demo 行为 | 可选 `vectorizePath` | 明确不支持，返回 `API_VECTORIZE_UNSUPPORTED` | 明确不支持，返回 `API_VECTORIZE_UNSUPPORTED` |
+| 参考图/源图 | 本地保留 | JSON 中发送 | 生成无图时 JSON；有图时 multipart `image[]` | 0 或 1 张 PNG/JPEG/WebP；图生图 multipart `image` |
+| 返回 | 本地演示 | `items` 栅格结果 | `data[].b64_json` 或 `data[].url`，转为栅格 Data URL | 原始 `image/*` 字节，转为栅格 Data URL |
 
 `openai-images` 是 OpenAI **Images 协议兼容**适配，不是“任意供应商 API”适配。供应商必须支持对应的路径、`model`、`n` 以及实际发送的图片字段；项目不替供应商猜测模型名或字段兼容性。`vectorize` 不会伪装成编辑或生成。
 

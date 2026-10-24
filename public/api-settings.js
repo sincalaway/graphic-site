@@ -11,7 +11,7 @@
     editPath: "/edit",
     vectorizePath: "",
   };
-  var PROTOCOLS = ["graphic-json", "openai-images", "sensenova-proxy"];
+  var PROTOCOLS = ["graphic-json", "openai-images", "sensenova-proxy", "stability-ai"];
   function copy(v) {
     var out = {};
     Object.keys(DEFAULTS).forEach(function (k) {
@@ -65,6 +65,14 @@
     var v = copy(Object.assign({}, DEFAULTS, value));
     if (typeof v.enabled !== "boolean" || PROTOCOLS.indexOf(v.protocol) < 0)
       throw new Error("API 设置无效");
+    if (v.protocol === "stability-ai") {
+      // Stability AI has a dedicated endpoint and model ID; do not accept a user-supplied target.
+      v.baseUrl = "https://api.stability.ai";
+      v.model = "sd3.5-large";
+      v.generatePath = "/v2beta/stable-image/generate/sd3";
+      v.editPath = "/v2beta/stable-image/generate/sd3";
+      v.vectorizePath = "";
+    }
     if (v.protocol === "sensenova-proxy") {
       var origin = global.location && global.location.origin;
       if (!origin || !base(origin)) throw new Error("同源代理需要 HTTPS 或 localhost 页面");
@@ -88,7 +96,7 @@
       typeof v.apiKey !== "string" ||
       v.apiKey.length > 4096 ||
       /[\x00-\x20\x7f]/.test(v.apiKey) ||
-      (v.enabled && ["openai-images", "sensenova-proxy"].indexOf(v.protocol) >= 0 && !v.apiKey)
+      (v.enabled && ["openai-images", "sensenova-proxy", "stability-ai"].indexOf(v.protocol) >= 0 && !v.apiKey)
     )
       throw new Error("API key 必须填写且不能包含空白或控制字符");
     if (

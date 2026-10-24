@@ -25,6 +25,15 @@ def run():
                 body={'items':[{'id':'mock-1','name':'API设计','imageUrl':'data:image/png;base64,'+PNG}]}
             route.fulfill(status=200, content_type='application/json', body=json.dumps(body), headers={'Access-Control-Allow-Origin':'*'})
         page.route('https://mock-api.example/**', respond)
+        stability_calls=[]
+        def stability_mock(route):
+            request=route.request
+            if request.method == 'OPTIONS':
+                route.fulfill(status=204, headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization,content-type','Access-Control-Allow-Methods':'POST,OPTIONS'})
+                return
+            stability_calls.append({'url':request.url,'headers':request.headers,'body':request.post_data_buffer})
+            route.fulfill(status=200, content_type='image/png', body=base64.b64decode(PNG), headers={'Access-Control-Allow-Origin':'*'})
+        page.route('https://api.stability.ai/**', stability_mock)
         page.goto(BASE)
         assert page.evaluate('GraphicAPI.status().demo')
         page.locator('#api-help').click()
@@ -121,9 +130,34 @@ def run():
         assert page.evaluate('GraphicAPISettings.get().apiKey') == ''
         assert 'test-placeholder' not in page.evaluate('JSON.stringify(localStorage)')
         assert 'test-placeholder' not in page.evaluate('JSON.stringify(sessionStorage)')
+        page.locator('#api-help').click()
+        page.locator('#api-enabled').check()
+        page.locator('#api-protocol').select_option('stability-ai')
+        assert page.locator('#api-base-url').input_value() == 'https://api.stability.ai'
+        assert page.locator('#api-base-url').get_attribute('readonly') is not None
+        assert page.locator('#api-model').input_value() == 'sd3.5-large'
+        assert page.locator('#api-model').get_attribute('readonly') is not None
+        page.locator('#api-key').fill('mock-stability-key')
+        page.locator('#api-consent').check()
+        page.locator('#api-settings-form button[type=submit]').click()
+        assert not stability_calls, 'saving Stability settings must not contact the provider'
+        page.locator('#view-studio').click()
+        page.locator('[data-tab="basic"]').click()
+        before_stability = page.locator('#result-grid .result-card').count()
+        page.locator('#brand').fill('Stability mock')
+        page.locator('#generate').click()
+        expect(page.locator('#result-grid .result-card')).to_have_count(before_stability + 1)
+        assert len(stability_calls) == 1
+        assert stability_calls[0]['url'] == 'https://api.stability.ai/v2beta/stable-image/generate/sd3'
+        assert stability_calls[0]['headers']['authorization'] == 'Bearer mock-stability-key'
+        assert 'multipart/form-data' in stability_calls[0]['headers']['content-type']
+        assert b'name="model"' in stability_calls[0]['body'] and b'sd3.5-large' in stability_calls[0]['body']
+        assert b'name="prompt"' in stability_calls[0]['body']
+        page.locator('#api-help').click()
+        page.locator('#api-clear').click()
         page.reload();assert page.evaluate('GraphicAPI.status().demo')
         assert not errors, errors
-        print(json.dumps({'passed':True,'mock_api_requests':len(calls),'checks':['configuration and consent','save without request','session persistence','key excluded from localStorage/status/closed DOM','JSON generation','multipart edit and references','PNG export','unsupported operation disabled','Graphic JSON vectorize','URL validation','mobile settings','clear returns to demo','no JS errors']}, ensure_ascii=False, indent=2))
+        print(json.dumps({'passed':True,'mock_api_requests':len(calls),'stability_mock_requests':len(stability_calls),'checks':['configuration and consent','save without request','session persistence','key excluded from localStorage/status/closed DOM','JSON generation','multipart edit and references','PNG export','unsupported operation disabled','Graphic JSON vectorize','Stability fixed config and mock multipart generation','URL validation','mobile settings','clear returns to demo','no JS errors']}, ensure_ascii=False, indent=2))
         browser.close()
 
 if __name__=='__main__':run()

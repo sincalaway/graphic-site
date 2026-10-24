@@ -56,10 +56,10 @@
   }
   function open() {
     const c = GraphicAPISettings.get();
-    dialog(`<p class="flow-kicker">YOUR API / YOUR CHOICE</p><h2>接入你的生成服务</h2><p class="hint">可选 SenseNova 专用同源代理，或高级浏览器直连。保存仅校验配置、不发请求；只读检查仅查询模型列表，点击生成才会请求图片。</p>
+    dialog(`<p class="flow-kicker">YOUR API / YOUR CHOICE</p><h2>接入你的生成服务</h2><p class="hint">可选 Stability AI 专用直连、SenseNova 专用同源代理，或高级浏览器直连。保存仅校验配置、不发请求；只读检查仅查询模型列表，点击生成才会请求图片。</p>
       <form id="api-settings-form" autocomplete="off">
       <label class="checkline"><input type="checkbox" id="api-enabled" ${c.enabled ? "checked" : ""}>启用真实 API（关闭则使用 demo）</label>
-      <label class="form-label">协议 <span class="required">*</span><select id="api-protocol"><option value="sensenova-proxy">SenseNova · 本站同源代理（推荐）</option><option value="openai-images">OpenAI 兼容 Images（非 Chat / Responses）</option><option value="graphic-json">Graphic 自有 JSON 契约</option></select></label>
+      <label class="form-label">协议 <span class="required">*</span><select id="api-protocol"><option value="stability-ai">Stability AI · SD3.5 Large（专用直连）</option><option value="sensenova-proxy">SenseNova · 本站同源代理（推荐）</option><option value="openai-images">OpenAI 兼容 Images（非 Chat / Responses）</option><option value="graphic-json">Graphic 自有 JSON 契约</option></select></label>
       <p class="notice" id="api-protocol-note"></p>
       <label class="form-label">服务地址 / API 前缀 <span class="required">*</span><input id="api-base-url" type="url" placeholder="https://your-service.example/v1" spellcheck="false" maxlength="2000"></label>
       <p class="hint">填写服务商文档中的 API 前缀（需要 /v1 时请自行包含）。仅 HTTPS 或 localhost HTTP，不允许 URL 中包含密钥、账号、查询或片段。</p>
@@ -93,11 +93,16 @@
     function protocol() {
       const custom = q("#api-protocol").value === "graphic-json";
       const proxy = q("#api-protocol").value === "sensenova-proxy";
+      const stability = q("#api-protocol").value === "stability-ai";
       diagnosticRevision++;
       q("#api-models-diagnostic").hidden = !proxy;
       q("#api-models-result").textContent = "";
-      q("#api-base-url").readOnly = proxy;
-      q("#api-model").readOnly = proxy;
+      q("#api-base-url").readOnly = proxy || stability;
+      q("#api-model").readOnly = proxy || stability;
+      if (stability) {
+        q("#api-base-url").value = "https://api.stability.ai";
+        q("#api-model").value = "sd3.5-large";
+      }
       if (proxy) {
         q("#api-base-url").value = location.origin + "/api/sensenova";
         q("#api-model").value = "sensenova-u1.5-lite";
@@ -106,7 +111,9 @@
       q("#api-key-required").textContent = custom
         ? "（可选：仅限无需 Bearer 的自有服务）"
         : "*";
-      q("#api-protocol-note").textContent = proxy
+      q("#api-protocol-note").textContent = stability
+        ? "固定 POST https://api.stability.ai/v2beta/stable-image/generate/sd3，模型 sd3.5-large；使用 multipart/form-data 和 Accept: image/*。每次仅返回 1 张；最多 1 张 PNG/JPEG/WebP 可作图生图输入，图生图 strength 固定为 0.65。不支持矢量化。保存不会请求；生成请求可能消耗 Stability AI credits。"
+        : proxy
         ? "固定转发至 https://token.sensenova.cn/v1 的 generations / edits；只读模型检查固定 GET /models。不支持自定义目标、模型或矢量化。每次 1–4 张，请求最多 20 MiB；PNG/JPEG/WebP 单图最多 8 MiB，最多 6 图。需要已部署同源函数；保存不会验证部署或编辑能力。"
         : custom
         ? "支持 POST JSON 生成 / 续改 / 栅格转换；仅适用于实现 Graphic items 契约的后端，不是任意供应商通用协议。"
@@ -120,6 +127,10 @@
         const url = new URL(base);
         if (url.username || url.password || url.search || url.hash ||
             !/^https?:$/.test(url.protocol)) throw new Error("invalid");
+        if (q("#api-protocol").value === "stability-ai") {
+          out.textContent = "最终请求路径（仅本地预览，未测试连接）：\nPOST https://api.stability.ai/v2beta/stable-image/generate/sd3\nmultipart/form-data · Authorization: Bearer · Accept: image/*\n无图时文本生图；带一张图时图生图。";
+          return;
+        }
         const prefix = url.origin + url.pathname.replace(/\/$/, "");
         const openai = ["openai-images", "sensenova-proxy"].includes(q("#api-protocol").value);
         const suffixes = openai ? ["/images/generations", "/images/edits"] :

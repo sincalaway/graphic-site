@@ -162,6 +162,87 @@ function context() {
     api.vectorize({ tool: "vectorize" }),
     (e) => e.code === "API_VECTORIZE_UNSUPPORTED",
   );
+  s.save({
+    enabled: true,
+    protocol: "stability-ai",
+    baseUrl: "https://attacker.invalid/ignored",
+    model: "user-model-is-ignored",
+    apiKey: "mock-stability-key",
+  });
+  assert.equal(s.get().baseUrl, "https://api.stability.ai");
+  assert.equal(s.get().model, "sd3.5-large");
+  let stabilityCalls = 0;
+  c.fetch = async (url, o) => {
+    stabilityCalls++;
+    seen = { url, o };
+    return {
+      ok: true,
+      status: 200,
+      blob: async () => new Blob([Buffer.from("png")], { type: "image/png" }),
+    };
+  };
+  const stabilityGenerated = await api.generate({ tool: "logo", brand: "mock" });
+  assert.equal(seen.url, "https://api.stability.ai/v2beta/stable-image/generate/sd3");
+  assert.equal(seen.o.method, "POST");
+  assert.equal(seen.o.credentials, "omit");
+  assert.equal(seen.o.redirect, "error");
+  assert.equal(seen.o.headers.Authorization, "Bearer mock-stability-key");
+  assert.equal(seen.o.headers.Accept, "image/*");
+  assert.equal(seen.o.headers["Content-Type"], undefined);
+  assert.equal(seen.o.body.get("model"), "sd3.5-large");
+  assert.match(seen.o.body.get("prompt"), /品牌: mock/);
+  assert.match(stabilityGenerated.items[0].imageUrl, /^data:image\/png;base64,/);
+  assert.equal(stabilityCalls, 1);
+  await assert.rejects(
+    api.generate({ tool: "logo", count: 2 }),
+    (e) => e.code === "INVALID_REQUEST",
+  );
+  await assert.rejects(
+    api.generate({ tool: "logo", references: ["data:image/png;base64,AAAA", "data:image/png;base64,AAAA"] }),
+    (e) => e.code === "INVALID_REQUEST",
+  );
+  await assert.rejects(
+    api.edit({ tool: "edit" }),
+    (e) => e.code === "INVALID_REQUEST",
+  );
+  assert.equal(stabilityCalls, 1, "unsupported Stability inputs must be rejected before fetch");
+  c.fetch = async () => ({ ok: false, status: 403 });
+  await assert.rejects(
+    api.generate({ tool: "logo" }),
+    (e) => e.code === "STABILITY_CONTENT_FILTERED" && e.details.status === 403,
+  );
+  c.fetch = async () => ({ ok: false, status: 402 });
+  await assert.rejects(
+    api.generate({ tool: "logo" }),
+    (e) => e.code === "STABILITY_CREDITS_UNAVAILABLE" && e.details.status === 402,
+  );
+  c.fetch = async (url, o) => {
+    seen = { url, o };
+    return {
+      ok: true,
+      status: 200,
+      blob: async () => new Blob([Buffer.from("png")], { type: "image/png" }),
+    };
+  };
+  await api.generate({ tool: "logo", sourceImage: "data:image/png;base64,AAAA" });
+  assert.equal(seen.o.body.get("mode"), "image-to-image");
+  assert.equal(seen.o.body.get("strength"), "0.65");
+  assert.equal(seen.o.body.get("image").type, "image/png");
+  assert.equal(seen.o.body.get("image").name, "source-image.png");
+  await assert.rejects(
+    api.vectorize({ tool: "vectorize" }),
+    (e) => e.code === "API_VECTORIZE_UNSUPPORTED",
+  );
+  s.save({
+    enabled: true,
+    protocol: "openai-images",
+    baseUrl: "https://api.test/root",
+    model: "explicit-model",
+    apiKey: "test-key",
+    generatePath: "/ignored",
+    editPath: "",
+    vectorizePath: "",
+  });
   c.fetch = async () => ({
     ok: false,
     status: 402,

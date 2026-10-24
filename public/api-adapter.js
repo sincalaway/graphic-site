@@ -89,7 +89,7 @@
   }
   function userConfigured(s, op) {
     if (!s || !s.enabled || !userBase(s.baseUrl) || !s.model) return false;
-    if (["openai-images", "sensenova-proxy"].indexOf(s.protocol) >= 0)
+    if (["openai-images", "sensenova-proxy", "stability-ai"].indexOf(s.protocol) >= 0)
       return op !== "vectorize" && (op === "generate" || op === "edit");
     return s.protocol === "graphic-json" && path(s[op + "Path"], false);
   }
@@ -97,10 +97,10 @@
     var s = settings();
     if (s && s.enabled) {
       if (!userConfigured(s, op)) {
-        if (["openai-images", "sensenova-proxy"].indexOf(s.protocol) >= 0 && op === "vectorize")
+        if (["openai-images", "sensenova-proxy", "stability-ai"].indexOf(s.protocol) >= 0 && op === "vectorize")
           throw new ApiError(
             "API_VECTORIZE_UNSUPPORTED",
-            "当前 Images 协议不支持矢量化",
+            "当前图像 API 协议不支持矢量化",
           );
         throw new ApiError("API_CONFIG_INVALID", "用户 API 设置无效");
       }
@@ -134,6 +134,9 @@
     u.hash = "";
     return u.href;
   }
+  function stabilityUrl() {
+    return "https://api.stability.ai/v2beta/stable-image/generate/sd3";
+  }
   function normalize(e, timedOut) {
     if (timedOut) return new ApiError("REQUEST_TIMEOUT", "API 请求超时");
     if (e instanceof ApiError) return e;
@@ -160,6 +163,8 @@
       SENSENOVA_ORIGIN_NOT_ALLOWED: ["本站同源检查拒绝", "HTTP 403 · origin_not_allowed：请求未通过本站代理的来源检查，尚未转发上游。", "请直接打开当前测试站，避免嵌入其他站点；检查 Origin / Sec-Fetch-Site。此错误不能归因于 key。"],
       SENSENOVA_UPSTREAM_FORBIDDEN: ["SenseNova 上游拒绝", "HTTP 403 · upstream_error：本站代理已收到上游的拒绝响应。", "可先运行只读模型列表检查；列表可访问或包含模型不代表具有图片生成权限，也不能排除上游访问策略。不会自动重试。"],
       SENSENOVA_EDGE_FORBIDDEN: ["本站前置安全验证", "HTTP 403 · 收到前置安全质询或 HTML，而非本站代理的 JSON 错误。", "请在当前浏览器直接打开测试站并完成安全验证，确认站点 cookie 可用后再手动检查。此响应不能认定为 SenseNova 或 key 拒绝。"],
+      STABILITY_CONTENT_FILTERED: ["内容审核未通过", "Stability AI 返回 HTTP 403。", "官方接口将 403 定义为请求被内容审核拦截；请调整提示词或输入图像后再考虑手动重试。"],
+      STABILITY_CREDITS_UNAVAILABLE: ["Stability AI credits 不足", "Stability AI 返回 HTTP 402。", "请在服务商账户查看 credits 与请求记录；本项目不会自动重试。"],
       HTTP_ERROR: ["API 返回 HTTP 错误", "服务端拒绝或未能完成请求。", "核对 API 配置与服务商状态；这里不会显示服务端原始错误正文。"],
       UNKNOWN_ERROR: ["暂时无法完成", "操作未完成，未保存新结果。", "请检查配置与输入；不能从现有信息确认原因。"]
     };
@@ -421,8 +426,39 @@
         headers = { Accept: "application/json" },
         body;
       var isOpen = selected.kind === "user" && ["openai-images", "sensenova-proxy"].indexOf(c.protocol) >= 0,
+        isStability = selected.kind === "user" && c.protocol === "stability-ai",
         p = isOpen ? openaiPayload(raw, c) : null;
-      if (isOpen) {
+      if (isStability) {
+        p = openaiPayload(raw, c);
+        if (op === "edit" && !p.images.length)
+          throw new ApiError("INVALID_REQUEST", "Stability AI 图生图操作需要一张输入图片");
+        if (p.payload.n !== 1)
+          throw new ApiError("INVALID_REQUEST", "Stability AI 此端点每次只返回一张图片");
+        if (p.images.length > 1)
+          throw new ApiError("INVALID_REQUEST", "Stability AI 图生图仅支持一张输入图片；请移除多余参考图");
+        url = stabilityUrl();
+        headers.Authorization = "Bearer " + c.apiKey;
+        headers.Accept = "image/*";
+        var stabilityForm = new FormData();
+        stabilityForm.append("prompt", p.payload.prompt);
+        stabilityForm.append("model", "sd3.5-large");
+        if (p.images.length) {
+          var stabilityData = p.images[0],
+            stabilityParts = stabilityData.split(","),
+            stabilityMime = (stabilityParts[0].match(/^data:([^;]+)/i) || [])[1] || "image/png";
+          if (!/^image\/(png|jpeg|webp)$/i.test(stabilityMime))
+            throw new ApiError("INVALID_REQUEST", "Stability AI 图生图仅支持 PNG/JPEG/WebP 输入图片");
+          var stabilityBin = atob(stabilityParts[1]),
+            stabilityBytes = new Uint8Array(stabilityBin.length);
+          if (stabilityBytes.length > 8 * 1024 * 1024)
+            throw new ApiError("INVALID_REQUEST", "Stability AI 输入图片需小于 8 MiB");
+          for (var si = 0; si < stabilityBin.length; si++) stabilityBytes[si] = stabilityBin.charCodeAt(si);
+          stabilityForm.append("mode", "image-to-image");
+          stabilityForm.append("strength", "0.65");
+          stabilityForm.append("image", new Blob([stabilityBytes], { type: stabilityMime }), "source-image." + stabilityMime.split("/")[1].replace("jpeg", "jpg"));
+        }
+        body = stabilityForm;
+      } else if (isOpen) {
         if (c.protocol === "sensenova-proxy" && (p.payload.n < 1 || p.payload.n > 4))
           throw new ApiError("INVALID_REQUEST", "SenseNova 同源代理每次仅支持 1–4 张");
         var hasImages = p.images.length;
@@ -493,13 +529,22 @@
         throw e;
       }
       if (!response || !response.ok)
-        throw await httpFailure(response, selected.kind === "user" && c.protocol === "sensenova-proxy");
+        throw await httpFailure(response, selected.kind === "user" && c.protocol === "sensenova-proxy", isStability);
       phase = "response";
       var result;
       try {
-        result = await response.json();
+        if (isStability) {
+          result = {
+            items: [{
+              id: "stability-image-1",
+              name: "方案 1",
+              imageUrl: await blobData(await response.blob()),
+            }],
+          };
+        } else result = await response.json();
       } catch (e) {
         if (e && e.name === "AbortError") throw e;
+        if (e instanceof ApiError) throw e;
         throw new ApiError("INVALID_RESPONSE", "API 未返回 JSON");
       }
       var parsed = isOpen ? parseOpenAI(result) : result;
@@ -532,8 +577,12 @@
     }
   }
   // Only this site's fixed proxy may supply these two allowlisted static codes.
-  async function httpFailure(response, proxy) {
+  async function httpFailure(response, proxy, stability) {
     var status = response && response.status, code = "HTTP_ERROR";
+    if (stability && status === 403)
+      return new ApiError("STABILITY_CONTENT_FILTERED", "Stability AI 内容审核未通过（HTTP 403）", { status: 403 });
+    if (stability && status === 402)
+      return new ApiError("STABILITY_CREDITS_UNAVAILABLE", "Stability AI credits 不足（HTTP 402）", { status: 402 });
     if (proxy && status === 403) {
       if (response.headers && (response.headers.get("cf-mitigated") === "challenge" ||
           /text\/html/i.test(response.headers.get("content-type") || "")))
@@ -587,7 +636,7 @@
       var user = !!(
         s &&
         s.enabled &&
-        ["graphic-json", "openai-images", "sensenova-proxy"].indexOf(s.protocol) >= 0
+        ["graphic-json", "openai-images", "sensenova-proxy", "stability-ai"].indexOf(s.protocol) >= 0
       );
       return {
         mode: user ? "remote" : c.mode === "remote" ? "remote" : "demo",
