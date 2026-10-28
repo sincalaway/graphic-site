@@ -2,13 +2,24 @@
 
 本文只描述**文档流程**，本次不登录、不部署、不真实调用 SenseNova。用户明确授权后才可执行发布。
 
+## 0. 最常见的「API key 无法使用」原因
+
+**只把 `public/` 拖拽上传（Direct Upload），或在 `public/` 目录内执行 Wrangler 时，根目录的 `functions/` 不会被部署**，`/api/image/*` 和 `/api/sensenova/*` 会返回静态 404 或 HTML，页面会提示“代理未部署”。这与 key 本身无关。
+
+正确做法（二选一）：
+
+- Git 集成：Root directory 留空（仓库根），Build command 留空，Build output directory 填 `public`。Pages 会自动从仓库根读取 `functions/`。
+- Wrangler：在**仓库根目录**执行 `npx wrangler pages deploy public`，Wrangler 会一起打包根目录的 `functions/`；不要先 `cd public` 再部署。
+
+部署后验证（不需要 key，不计费）：`curl -i https://<你的域名>/api/image/sensenova/models` 应返回 JSON `401`（缺少 key），而不是 404 / HTML。
+
 ## 1. 发布边界与目录
 
 站点静态资源输出目录是仓库根的 `public/`；Cloudflare Pages Functions 位于仓库根的 `functions/`，**不在 `public/` 内**。不要把整个仓库当静态资源公开，也不要把 `functions/` 复制进 `public/`。
 
 SenseNova 专用模式 `protocol='sensenova-proxy'` 依赖同源 Pages Function。它把 `/api/sensenova/images/generations`、`/api/sensenova/images/edits` 和只读的 `/api/sensenova/models` 转发到固定的 `https://token.sensenova.cn/v1` 路径；其中 models 只返回 `{data:[{id}]}`，缺 auth 返回 401。不需要服务器 SenseNova secret 或 environment binding，key 由用户当前页面输入并透传。Function 必须遵守 API 文档的静态错误、无日志/回显、禁止重定向和无重试边界；403 必须用自身安全 `error.code` 区分 `origin_not_allowed` / `upstream_error`，不能把模型列表可访问当作图片生成权限证明。
 
-仓库已提供 `public/_routes.json`，将 Function 调用范围限制为 `/api/sensenova/*`，包括只读模型列表。不要把它误解为静态资源路由；最终以 Cloudflare Pages 路由规则核实为准。
+仓库已提供 `public/_routes.json`，将 Function 调用范围限制为 `/api/sensenova/*` 与多服务商代理 `/api/image/*`，包括只读模型列表。不要把它误解为静态资源路由；最终以 Cloudflare Pages 路由规则核实为准。
 
 ## 2. 本地预览：区分静态 Python 与 Functions
 

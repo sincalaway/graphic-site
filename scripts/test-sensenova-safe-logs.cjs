@@ -130,11 +130,11 @@ async function scenario(fetchMock, run) {
       assert.equal(url, `${UPSTREAM}/edits`);
       assert.equal(options.method, 'POST');
       assert.equal(options.headers.Authorization, FAKE_AUTH);
-      assert.ok(options.body instanceof FormData);
-      assert.equal(options.body.get('model'), MODEL);
-      assert.equal(options.body.get('prompt'), FAKE_PROMPT);
-      assert.equal(options.body.get('image[]').name, 'reference-1');
-      assert.equal(await options.body.get('image[]').text(), FAKE_IMAGE);
+      const sent = JSON.parse(options.body);
+      assert.equal(sent.model, MODEL);
+      assert.equal(sent.prompt, FAKE_PROMPT);
+      assert.equal(sent.images.length, 1);
+      assert.equal(Buffer.from(sent.images[0].image_url.split(',')[1], 'base64').toString(), FAKE_IMAGE);
       return new Response(JSON.stringify({ data: [{ b64_json: 'aW1hZ2UtZWRpdA==' }] }), { status: 200 });
     }, async () => {
       const response = await handle(editRequest(), {}, EDITS);

@@ -8,7 +8,7 @@ ROOT=Path(__file__).resolve().parents[1]
 
 def run():
     with sync_playwright() as p:
-        browser=p.chromium.launch(executable_path='/usr/bin/chromium',args=['--no-sandbox'])
+        browser=p.chromium.launch(executable_path=os.environ.get('CHROMIUM_PATH') or None,args=['--no-sandbox'])
         context=browser.new_context(viewport={'width':1440,'height':1000},accept_downloads=True)
         page=context.new_page(); errors=[]; requests=[]
         page.on('pageerror',lambda e:errors.append(str(e)))

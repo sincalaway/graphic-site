@@ -96,8 +96,17 @@
       c.mode === "remote" && path(c.baseUrl) && typeof e === "string" && path(e)
     );
   }
+  function providerOf(s) {
+    var list = global.GraphicImageProviders;
+    return list && s && s.provider ? list.get(s.provider) : null;
+  }
   function userConfigured(s, op) {
     if (!s || !s.enabled) return false;
+    if (s.protocol === "multi-proxy") {
+      var p = providerOf(s);
+      if (!p || !s.model || !s.apiKey) return false;
+      return op === "generate" || (op === "edit" && p.edit);
+    }
     if (s.protocol === "comfyui-api")
       return op === "generate" && comfyBase(s.baseUrl) && typeof s.workflowJson === "string" && !!s.workflowJson;
     if (!userBase(s.baseUrl) || !s.model) return false;
@@ -109,6 +118,9 @@
     var s = settings();
     if (s && s.enabled) {
       if (!userConfigured(s, op)) {
+        if (s.protocol === "multi-proxy" && (op === "edit" || op === "vectorize") && providerOf(s) && s.model && s.apiKey)
+          throw new ApiError(op === "vectorize" ? "API_VECTORIZE_UNSUPPORTED" : "PROXY_EDIT_UNSUPPORTED",
+            op === "vectorize" ? "当前图像 API 不支持矢量化" : "所选服务商不支持参考图编辑");
         if (s.protocol === "comfyui-api" && op !== "generate")
           throw new ApiError("API_OPERATION_UNSUPPORTED", "ComfyUI 当前仅支持运行导入的生成 workflow");
         if (["openai-images", "sensenova-proxy"].indexOf(s.protocol) >= 0 && op === "vectorize")
@@ -185,12 +197,41 @@
       COMFYUI_INVALID_RESPONSE: ["ComfyUI 响应格式无效", "没有收到可识别的 ComfyUI API 响应。", "确认地址指向 ComfyUI 服务且已导入 API 格式 workflow JSON。"],
       COMFYUI_WORKFLOW_FAILED: ["ComfyUI workflow 执行失败", "本机 ComfyUI 报告 workflow 未完成。", "请在 ComfyUI 查看节点执行错误；本页面不读取或展示错误详情。"],
       COMFYUI_NO_OUTPUT: ["workflow 没有可用图片输出", "ComfyUI 已完成，但历史结果中没有可读取的图片。", "确认导入的 API workflow 包含图片保存/输出节点；需要为目标 workflow 单独确认节点映射。"],
+      PROXY_EDIT_UNSUPPORTED: ["该服务商不支持参考图", "所选服务商只支持文生图。", "去掉参考图 / 手稿后再生成，或在「配置 API」换一个支持编辑的服务商（如 SenseNova、豆包 Seedream、硅基流动 Edit 模型）。"],
+      PROXY_ORIGIN_NOT_ALLOWED: ["本站来源检查拒绝", "请求没有通过本站代理的来源检查，尚未发给服务商。", "请直接在浏览器打开本站，不要嵌在其他网站里使用。这与 key 无关。"],
+      PROXY_EDGE_FORBIDDEN: ["本站前置安全验证", "Cloudflare 返回了安全验证页面，而不是本站代理的结果。", "刷新页面完成验证后再试；这与 key 无关。"],
+      PROXY_NOT_DEPLOYED: ["本站代理未部署", "访问 /api/image 没有得到代理的 JSON 响应。", "Cloudflare Pages 需从仓库根目录部署（构建输出 public、根目录留空），functions/ 才会生效；拖拽上传 public 不包含代理。"],
+      PROXY_MISSING_KEY: ["没有收到 API key", "本站代理没有收到有效的 Authorization。", "在「配置 API」重新粘贴 key 并保存；key 太短或为空会被视为未填写。"],
+      PROXY_INVALID_N: ["生成数量超出服务商限制", "该服务商每次请求生成的张数有限制。", "页面会自动拆成多次请求；如仍出现，请把生成数量改为 1 张。"],
+      PROXY_INVALID_INPUT: ["请求参数无效", "模型 ID、提示词或参考图未通过本站代理校验。", "检查模型 ID 是否填写正确；参考图仅支持不超过 8 MB 的 PNG/JPEG/WebP，最多 6 张。"],
+      PROXY_UPSTREAM: ["服务商返回错误", "服务商拒绝或未能完成请求。", "核对 key、模型和额度。"],
+      PROXY_UNAVAILABLE: ["连不上服务商", "本站代理无法连接到服务商接口。", "稍后再试；若持续出现，可能是服务商在该地区不可用。"],
+      PROXY_TIMEOUT: ["服务商响应超时", "等待服务商生成超时。", "服务端可能仍在生成并计费；先查服务商用量记录再重试。"],
+      PROXY_BAD_RESPONSE: ["服务商响应无法识别", "服务商没有返回可用的图片结果。", "确认所选模型是图像生成模型（不是聊天模型）。"],
+      PROXY_RESULT_IMAGE: ["结果图片下载失败", "服务商已返回图片链接，但本站代理没能下载。", "生成可能已经完成并计费，请到服务商控制台查看，不要直接重复生成。"],
       HTTP_ERROR: ["API 返回 HTTP 错误", "服务端拒绝或未能完成请求。", "核对 API 配置与服务商状态；这里不会显示服务端原始错误正文。"],
       UNKNOWN_ERROR: ["暂时无法完成", "操作未完成，未保存新结果。", "请检查配置与输入；不能从现有信息确认原因。"]
     };
     var code = e && Object.prototype.hasOwnProperty.call(messages, e.code) ? e.code : "UNKNOWN_ERROR",
       m = messages[code], status = e && e.details && e.details.status;
     status = Number.isInteger(status) && status >= 100 && status <= 599 ? status : null;
+    if (code === "PROXY_UPSTREAM") {
+      var d = (e && e.details) || {}, up = Number.isInteger(d.upstreamStatus) ? d.upstreamStatus : status,
+        label = d.provider ? d.provider + " " : "服务商";
+      if (up === 401)
+        m = ["API key 无效或已失效", label + "返回 401：不认这个 key。", "确认服务商选对了（例如国际版 key 不能用于国内版、豆包 key 不能用于商汤），key 复制完整且未被删除；可用「自动识别」让页面逐个检查。"];
+      else if (up === 403)
+        m = ["key 没有权限", label + "返回 403：key 有效但无权调用。", "到服务商控制台确认已开通该模型 / 已实名 / 账户状态正常。"];
+      else if (up === 404)
+        m = ["模型不存在", label + "返回 404：模型 ID 不存在或未开通。", "点「检查 key 并获取模型」从列表中选择模型，或按服务商文档填写完整模型 ID。"];
+      else if (up === 402 || up === 429)
+        m = ["额度不足或请求太频繁", label + "返回 " + up + "。", "检查账户余额 / 免费额度窗口，稍等再试。"];
+      else if (up === 400 || up === 422)
+        m = ["服务商认为参数有误", label + "返回 " + up + "。", "常见原因：模型不是图像模型、该模型不支持参考图、尺寸不受支持。"];
+      else if (up >= 500)
+        m = ["服务商暂时异常", label + "返回 " + up + "。", "稍后再试；先确认没有重复任务再重新生成。"];
+      if (d.upstreamMessage) m = [m[0], m[1] + " 服务商说明：" + d.upstreamMessage, m[2]];
+    }
     if (code === "HTTP_ERROR" && status) {
       if (status === 401 || status === 403)
         m = ["认证或权限失败", "服务返回 HTTP " + status + "。", "在 API 配置中核对 key 是否有效，以及该账号对端点和模型是否有权限；也可能是服务商的访问策略。不要把 key 发到聊天或日志。"];
@@ -543,6 +584,12 @@
           ? await prepareImages(raw, controller ? controller.signal : external)
           : contract.validateRequest(raw);
       raw = contract.validateRequest(raw);
+      if (selected.kind === "user" && c.protocol === "multi-proxy") {
+        phase = "request";
+        var proxied = await proxyRequest(op, raw, c, controller ? controller.signal : external);
+        phase = "response";
+        return contract.validateItems(proxied, global.location && global.location.origin);
+      }
       var url,
         headers = { Accept: "application/json" },
         body;
@@ -658,6 +705,118 @@
         external.removeEventListener("abort", abort);
     }
   }
+  // Multi-provider proxy (/api/image/<provider>/generate). One unified JSON request; the
+  // count is split into several requests when the provider only makes 1 image per call.
+  async function proxyRequest(op, raw, s, signal) {
+    var p = providerOf(s), job = openaiPayload(raw, s), wanted = job.payload.n;
+    if (op === "edit" && !job.images.length)
+      throw new ApiError("INVALID_REQUEST", "编辑操作需要图片");
+    if (job.images.length && !p.edit)
+      throw new ApiError("PROXY_EDIT_UNSUPPORTED", "所选服务商不支持参考图编辑");
+    if (job.images.length > 6)
+      throw new ApiError("INVALID_REQUEST", "最多支持 6 张参考图");
+    job.images.forEach(function (image) {
+      if (!/^data:image\/(png|jpeg|webp);base64,/i.test(image) || image.length * 0.75 > 8 * 1024 * 1024)
+        throw new ApiError("INVALID_REQUEST", "参考图仅支持不超过 8 MB 的 PNG/JPEG/WebP");
+    });
+    var items = [];
+    while (items.length < wanted) {
+      var n = Math.min(p.maxN, wanted - items.length), body = {
+        model: s.model, prompt: job.payload.prompt, n: n, watermark: !!s.watermark,
+      };
+      if (job.images.length) body.images = job.images;
+      var response = await fetch(global.location.origin + "/api/image/" + encodeURIComponent(s.provider) + "/generate", {
+        method: "POST", credentials: "same-origin", redirect: "error", cache: "no-store", signal: signal,
+        headers: { Accept: "application/json", "Content-Type": "application/json", Authorization: "Bearer " + s.apiKey },
+        body: JSON.stringify(body),
+      });
+      if (!response || !response.ok) throw await proxyFailure(response, p);
+      var result;
+      try { result = await response.json(); }
+      catch (e) {
+        if (e && e.name === "AbortError") throw e;
+        throw new ApiError("PROXY_NOT_DEPLOYED", "本站代理没有返回 JSON");
+      }
+      if (!result || !Array.isArray(result.data) || !result.data.length)
+        throw new ApiError("PROXY_BAD_RESPONSE", "服务商响应无法识别");
+      result.data.forEach(function (x) {
+        if (!x || typeof x.b64_json !== "string" || !/^[A-Za-z0-9+/=\s]+$/.test(x.b64_json))
+          throw new ApiError("PROXY_BAD_RESPONSE", "服务商响应无法识别");
+        var mime = /^image\/(png|jpeg|webp|gif)$/.test(x.mime || "") ? x.mime : "image/png";
+        items.push({ id: "image-" + (items.length + 1), name: "方案 " + (items.length + 1),
+          imageUrl: "data:" + mime + ";base64," + x.b64_json.replace(/\s+/g, "") });
+      });
+      // A provider that returned fewer images than asked is not asked again (each call is billed).
+      if (result.data.length < n) break;
+    }
+    return { items: items.slice(0, wanted) };
+  }
+  async function proxyFailure(response, provider) {
+    var status = response && response.status, body = null;
+    var type = response && response.headers ? response.headers.get("content-type") || "" : "";
+    if (status === 403 && response.headers && response.headers.get("cf-mitigated") === "challenge")
+      return new ApiError("PROXY_EDGE_FORBIDDEN", "本站前置安全验证", { status: status });
+    if (/json/i.test(type)) { try { body = await response.json(); } catch (_) { body = null; } }
+    var err = body && body.error;
+    if (!err || typeof err.code !== "string")
+      return new ApiError(status === 403 && /html/i.test(type) ? "PROXY_EDGE_FORBIDDEN" : "PROXY_NOT_DEPLOYED",
+        "本站代理不可用（HTTP " + (status || 0) + "）", { status: status });
+    var map = {
+      origin_not_allowed: "PROXY_ORIGIN_NOT_ALLOWED", missing_authorization: "PROXY_MISSING_KEY",
+      invalid_n: "PROXY_INVALID_N", invalid_request: "PROXY_INVALID_INPUT", invalid_images: "PROXY_INVALID_INPUT",
+      edit_not_supported: "PROXY_EDIT_UNSUPPORTED", unknown_provider: "API_CONFIG_INVALID",
+      upstream_error: "PROXY_UPSTREAM", upstream_unavailable: "PROXY_UNAVAILABLE",
+      upstream_timeout_or_cancelled: "PROXY_TIMEOUT", invalid_upstream_response: "PROXY_BAD_RESPONSE",
+      upstream_response_too_large: "PROXY_BAD_RESPONSE", result_image_unavailable: "PROXY_RESULT_IMAGE",
+      request_too_large: "PROXY_INVALID_INPUT", models_not_supported: "API_OPERATION_UNSUPPORTED",
+    };
+    var details = { status: status, provider: provider ? provider.label : "" };
+    if (Number.isInteger(err.upstream_status)) details.upstreamStatus = err.upstream_status;
+    if (typeof err.upstream_type === "string" && /^[A-Za-z0-9_.-]{1,64}$/.test(err.upstream_type)) details.upstreamType = err.upstream_type;
+    if (typeof err.upstream_message === "string") details.upstreamMessage = err.upstream_message.slice(0, 220);
+    return new ApiError(map[err.code] || "HTTP_ERROR", "API 请求失败（HTTP " + (status || 0) + "）", details);
+  }
+  async function proxyModels(providerId, apiKey, timeoutMs) {
+    var list = global.GraphicImageProviders, p = list && list.get(providerId),
+      key = list ? list.normalizeKey(apiKey) : "";
+    if (!p) throw new ApiError("API_CONFIG_INVALID", "请选择服务商");
+    if (!key) throw new ApiError("PROXY_MISSING_KEY", "请先填写 API key");
+    if (!p.models) return { supported: false, models: [] };
+    var controller = new AbortController(), timedOut = false;
+    var timer = setTimeout(function () { timedOut = true; controller.abort(); }, timeoutMs || 25000);
+    try {
+      var response = await fetch(global.location.origin + "/api/image/" + encodeURIComponent(p.id) + "/models", {
+        method: "GET", credentials: "same-origin", redirect: "error", cache: "no-store", signal: controller.signal,
+        headers: { Accept: "application/json", Authorization: "Bearer " + key },
+      });
+      if (!response || !response.ok) throw await proxyFailure(response, p);
+      var body = await response.json();
+      var ids = (body && Array.isArray(body.data) ? body.data : []).map(function (m) { return m && m.id; })
+        .filter(function (id) { return typeof id === "string" && /^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,127}$/.test(id); });
+      var imageLike = ids.filter(function (id) {
+        return /image|seedream|cogview|kolors|flux|stable|sd[x-]|dall|u1|kontext|wan|hidream|recraft/i.test(id);
+      });
+      return { supported: true, models: ids, imageModels: imageLike };
+    } catch (e) { throw normalize(e, timedOut); }
+    finally { clearTimeout(timer); key = ""; }
+  }
+  /** Find which provider accepts this key by read-only model-list checks (no image requests). */
+  async function detectProvider(apiKey) {
+    var list = global.GraphicImageProviders, candidates = list ? list.guess(apiKey) : [];
+    var unchecked = [];
+    for (var i = 0; i < candidates.length; i++) {
+      var p = list.get(candidates[i]);
+      if (!p.models) { unchecked.push(p.id); continue; }
+      try {
+        var result = await proxyModels(p.id, apiKey, 15000);
+        return { provider: p.id, models: result.models, imageModels: result.imageModels };
+      } catch (e) {
+        if (e && ["PROXY_NOT_DEPLOYED", "PROXY_EDGE_FORBIDDEN", "PROXY_ORIGIN_NOT_ALLOWED"].indexOf(e.code) >= 0) throw e;
+      }
+    }
+    if (unchecked.length === 1 && candidates.length === 1) return { provider: unchecked[0], models: [], unverified: true };
+    return { provider: "", models: [] };
+  }
   // Only this site's fixed proxy may supply allowlisted static error codes.
   async function httpFailure(response, proxy) {
     var status = response && response.status, code = "HTTP_ERROR";
@@ -715,6 +874,8 @@
   var api = {
     errorInfo: errorInfo,
     checkSenseNovaModels: checkSenseNovaModels,
+    proxyModels: proxyModels,
+    detectProvider: detectProvider,
     status: function () {
       var c = cfg(),
         s = settings(),
@@ -727,7 +888,7 @@
       var user = !!(
         s &&
         s.enabled &&
-        ["graphic-json", "openai-images", "sensenova-proxy", "comfyui-api"].indexOf(s.protocol) >= 0
+        ["graphic-json", "openai-images", "sensenova-proxy", "comfyui-api", "multi-proxy"].indexOf(s.protocol) >= 0
       );
       return {
         mode: user ? "remote" : c.mode === "remote" ? "remote" : "demo",
@@ -737,6 +898,7 @@
         provider: user ? "" : typeof c.provider === "string" ? c.provider : "",
         model: user ? s.model : typeof c.model === "string" ? c.model : "",
         protocol: user ? s.protocol : "",
+        provider: user ? s.provider || "" : "",
         baseUrl: user
           ? s.baseUrl
           : typeof c.baseUrl === "string"

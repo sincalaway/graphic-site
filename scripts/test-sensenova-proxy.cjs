@@ -48,9 +48,11 @@ function editRequest(f) {
   assert.deepEqual(JSON.parse(calls[0].options.body), common); checks++;
   r = await handle(editRequest(form()), {}, edits);
   assert.equal(r.status, 200); assert.equal(calls[1].url, 'https://token.sensenova.cn/v1/images/edits');
-  const forwarded = calls[1].options.body;
-  assert.ok(forwarded instanceof FormData); assert.equal(forwarded.get('image[]').name, 'reference-1');
-  assert.equal(calls[1].options.headers['Content-Type'], undefined); checks++;
+  // SenseNova edits take JSON images[].image_url data URLs, never multipart or user filenames.
+  const forwarded = JSON.parse(calls[1].options.body);
+  assert.deepEqual(forwarded.images, [{ image_url: 'data:image/png;base64,' + Buffer.from(png).toString('base64') }]);
+  assert.equal(forwarded.model, common.model); assert.ok(!calls[1].options.body.includes('private-name'));
+  assert.equal(calls[1].options.headers['Content-Type'], 'application/json'); checks++;
   for (const method of ['GET','PUT','DELETE','PATCH','OPTIONS','HEAD'])
     await expectRejected(new Request('https://site.test' + generation, { method }), 405);
   await expectRejected(req(generation + '?url=https://evil.test'), 400);

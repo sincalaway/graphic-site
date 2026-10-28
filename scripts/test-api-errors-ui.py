@@ -10,7 +10,7 @@ PNG = base64.b64encode((ROOT / 'public/assets/style-0.png').read_bytes()).decode
 
 def run():
     with sync_playwright() as p:
-        browser = p.chromium.launch(executable_path='/usr/bin/chromium', args=['--no-sandbox'])
+        browser = p.chromium.launch(executable_path=os.environ.get('CHROMIUM_PATH') or None, args=['--no-sandbox'])
         context = browser.new_context(viewport={'width': 375, 'height': 850})
         page = context.new_page()
         calls, mode = [], {'value': '200'}

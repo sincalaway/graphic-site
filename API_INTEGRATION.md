@@ -2,7 +2,37 @@
 
 本文档描述 Graphic 的 **SenseNova 专用同源代理**、ComfyUI 本机 API workflow、保留的浏览器直连配置，以及高级静态同源模式。它们都是本项目自己的适配边界，不是原站后端文档；原站公开资料不证明其具体供应商、模型或私有接口；这里的 SenseNova 集成是本项目的独立实现。
 
-## SenseNova 专用同源模式（`protocol='sensenova-proxy'`）
+## 多服务商同源代理（`protocol='multi-proxy'`，推荐）
+
+配置面板默认选「多服务商 · 本站代理」。用户选择服务商、自由填写或从列表选择模型 ID，再粘贴自己的 key。旧版保存的 `sensenova-proxy` 配置会自动迁移为 `multi-proxy` + `provider: sensenova`。
+
+| provider | 固定上游（白名单，不可自定义） | 单次最多 | 参考图编辑 | 模型列表 | 常用模型（仅建议，可自由填写） |
+|---|---|---|---|---|---|
+| `sensenova` | `https://token.sensenova.cn/v1` | 1 | ✅ JSON `images[].image_url` | ✅ | `sensenova-u1.5-lite` |
+| `sensenova-intl` | `https://token.sensenova.ai/v1` | 1 | ✅ | ✅ | `sensenova-u1.5-lite`（需国际版 key） |
+| `ark` | `https://ark.cn-beijing.volces.com/api/v3` | 1 | ✅ `image` 数组 | ✅ | `doubao-seedream-4-0-250828`、`doubao-seedream-4-5-251128`、`doubao-seedream-5-0-260128` |
+| `siliconflow` | `https://api.siliconflow.cn/v1` | 4 | ✅ | ✅ | `Kwai-Kolors/Kolors` 等 |
+| `zhipu` | `https://open.bigmodel.cn/api/paas/v4` | 1 | ❌ 仅文生图 | ❌ | `cogview-4-250304`、`cogview-3-flash`、`glm-image` |
+| `openai` | `https://api.openai.com/v1` | 4 | ✅ multipart | ✅ | `gpt-image-1`、`gpt-image-1-mini`、`dall-e-3` |
+
+统一接口（均由 `functions/api/image/[provider]/[op].js` 和 `worker.mjs` 提供）：
+
+- `GET /api/image/<provider>/models`：只读模型列表，裁剪为 `{data:[{id}]}`；不生图、不计费，用于「检查 key 并获取模型」和「自动识别服务商」。
+- `POST /api/image/<provider>/generate`：统一 JSON `{model, prompt, n, size, images?, watermark?}`；`images` 为 `data:image/...;base64,...`。代理按服务商改写请求体，把上游返回的 URL 下载成 Base64（拒绝 HTTP、localhost、私网地址），统一返回 `{data:[{b64_json, mime}]}`。
+
+Key 处理：`Authorization` 中的 key 会被自动清理首尾空格、换行、引号和一个或多个 `Bearer ` 前缀；代理不保存、不记录、不回显 key，上游错误统一脱敏。图片请求不自动重试；请求数量超过服务商单次上限时前端拆分，服务商少返回时不会再次请求（避免重复计费）。
+
+「API key 无法使用」的排查顺序（页面会直接给出对应提示）：
+
+1. **代理未部署**：`/api/image/...` 返回静态 404 / HTML，说明只部署了 `public/`，Functions 不存在，与 key 无关。见 DEPLOY_CLOUDFLARE.md。
+2. **服务商选错 / 区域不对**：SenseNova 国内 key 不能用于国际版，反之亦然；用「自动识别服务商」检查。
+3. **401 / 403**：key 无效、过期，或账号未开通该模型 / 生图权限。模型出现在列表中不代表有生图权限。
+4. **404 / 400**：模型 ID 不存在或参数（尺寸、数量）不被该模型接受。
+5. **429 / 5xx**：额度、限流或上游故障。
+
+旧的 `sensenova-proxy` 编辑接口已修复：`/api/sensenova/images/edits` 现在按官方文档转为 JSON `images: [{image_url: "data:..."}]`，不再转发 multipart。
+
+## SenseNova 旧同源模式（`protocol='sensenova-proxy'`，保留兼容）
 
 ### 安全边界与固定路由
 
@@ -66,7 +96,7 @@ Authorization: Bearer <当前页面输入的 key>
 
 项目映射的提示词/图片字段应以实际实现和上游契约为准；不要把本专用模式当成任意 OpenAI 供应商兼容层。
 
-### 编辑：multipart `image[]`
+### 编辑：JSON `images[].image_url`（代理自动转换）
 
 有源图或参考图时，前端向同源 Function 发：
 
@@ -76,7 +106,7 @@ Content-Type: multipart/form-data; boundary=（由浏览器自动生成）
 Authorization: Bearer <当前页面输入的 key>
 ```
 
-图片字段名固定为 `image[]`，不要手工覆盖 multipart boundary。本项目单次请求限制为 `n=1..4`，这不是供应商批量能力承诺。请求限制为：单图不超过 **8 MiB**，单次最多 **6** 张，媒体类型仅 PNG/JPEG/WebP，整个请求不超过 **20 MiB**。Function 对实际读取的请求字节执行限制并验证字段；前端也会在超过张数范围时本地拒绝，不能据此声称上游已验证接受。
+前端仍可发 multipart `image[]`，Function 会把文件转换为官方要求的 JSON `images: [{ "image_url": "data:image/png;base64,..." }]` 再以 `Content-Type: application/json` 转发；不要手工覆盖 multipart boundary。本项目单次请求限制为 `n=1..4`，这不是供应商批量能力承诺。请求限制为：单图不超过 **8 MiB**，单次最多 **6** 张，媒体类型仅 PNG/JPEG/WebP，整个请求不超过 **20 MiB**。Function 对实际读取的请求字节执行限制并验证字段；前端也会在超过张数范围时本地拒绝，不能据此声称上游已验证接受。
 
 ### 返回与失败
 

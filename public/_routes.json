@@ -1,5 +1,5 @@
 {
   "version": 1,
-  "include": ["/api/sensenova/*"],
+  "include": ["/api/sensenova/*", "/api/image/*"],
   "exclude": []
 }

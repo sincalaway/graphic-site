@@ -19,6 +19,10 @@ Graphic 是一个**本地优先**的网站。默认进入 Logo 创作，保留�
 
 顶部状态栏的 **“配置 API”**，以及“更多”菜单中的 **“API 接入状态”** 都会打开同一个配置面板。手机上按以下步骤操作：
 
+**推荐：多服务商 · 本站代理**。打开 **配置 API**，默认即为该模式：选择服务商（SenseNova 国内/国际、火山方舟 Seedream、硅基流动、智谱 CogView、OpenAI Images），粘贴 key（多余空格、换行、引号或 `Bearer ` 前缀会自动去掉），点 **🔍 自动识别服务商** 或 **检查 key 并获取模型**（只读模型列表，不生图、不扣费），模型 ID 可从列表选择或自由填写。可选「在这台设备上记住配置」。请求经同源 `/api/image/<provider>/...` 转发到固定官方地址，详见 API_INTEGRATION.md。**部署后提示代理未部署 / key 无法使用时，先确认 Cloudflare Pages 是从仓库根部署（含 `functions/`），而不是只上传 `public/`。**
+
+以下为旧版及高级模式说明：
+
 1. 打开 **配置 API**，选择协议并填写协议所需字段：`graphic-json` / `openai-images` 是浏览器直连；专用 `sensenova-proxy` 仅使用同源 `/api/sensenova`，模型固定为 `sensenova-u1.5-lite`，`baseUrl` 运行时固定为 `location.origin + '/api/sensenova'`，不可改成通用代理。
 2. 选择 `sensenova-proxy` 时，只在当前页面输入 SenseNova key；它仅放入当前标签页 `sessionStorage`，不读取平台保存的密钥；刷新时可读取本页会话配置。阅读安全提示并勾选确认（只有随后点击生成/编辑，key、提示词和使用的图片才会发送，可能计费）。
 3. 点 **保存配置**。这一步只做本地格式校验和保存，不测试、不收费、不发请求。

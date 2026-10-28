@@ -31,6 +31,7 @@ function context() {
   };
   vm.runInNewContext(fs.readFileSync(root + "/api-contract.js", "utf8"), c);
   vm.runInNewContext(fs.readFileSync(root + "/api-config.js", "utf8"), c);
+  vm.runInNewContext(fs.readFileSync(root + "/api-providers.js", "utf8"), c);
   vm.runInNewContext(fs.readFileSync(root + "/api-settings.js", "utf8"), c);
   vm.runInNewContext(fs.readFileSync(root + "/api-adapter.js", "utf8"), c);
   return c;
@@ -50,6 +51,9 @@ function context() {
     editPath: "/edit",
     vectorizePath: "",
     workflowJson: "",
+    provider: "",
+    watermark: false,
+    remember: false,
   });
   for (const bad of [
     "api.test/x",

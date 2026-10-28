@@ -1,6 +1,7 @@
 (function (global) {
   "use strict";
   var KEY = "graphic-api-settings-v1";
+  var providers = global.GraphicImageProviders;
   var DEFAULTS = {
     enabled: false,
     protocol: "graphic-json",
@@ -11,8 +12,11 @@
     editPath: "/edit",
     vectorizePath: "",
     workflowJson: "",
+    provider: "",
+    watermark: false,
+    remember: false,
   };
-  var PROTOCOLS = ["graphic-json", "openai-images", "sensenova-proxy", "comfyui-api"];
+  var PROTOCOLS = ["graphic-json", "openai-images", "sensenova-proxy", "comfyui-api", "multi-proxy"];
   function copy(v) {
     var out = {};
     Object.keys(DEFAULTS).forEach(function (k) {
@@ -97,6 +101,33 @@
     var v = copy(Object.assign({}, DEFAULTS, value));
     if (typeof v.enabled !== "boolean" || PROTOCOLS.indexOf(v.protocol) < 0)
       throw new Error("API 设置无效");
+    // Pasted keys often carry spaces, line breaks, quotes or a "Bearer " prefix: clean them
+    // instead of rejecting the key (this used to make valid keys "unusable").
+    if (typeof v.apiKey === "string")
+      v.apiKey = providers ? providers.normalizeKey(v.apiKey) : v.apiKey.trim();
+    v.watermark = v.watermark === true;
+    v.remember = v.remember === true;
+    if (typeof v.provider !== "string") v.provider = "";
+    // The old SenseNova-only proxy is now one provider of the multi-provider proxy.
+    if (v.protocol === "sensenova-proxy") {
+      v.protocol = "multi-proxy";
+      v.provider = "sensenova";
+      if (!v.model || v.model === "sensenova-u1.5-lite") v.model = "sensenova-u1.5-lite";
+    }
+    if (v.protocol === "multi-proxy") {
+      var site = global.location && global.location.origin;
+      if (!site || !base(site)) throw new Error("本站代理需要 HTTPS 或 localhost 页面");
+      if (!providers || !providers.get(v.provider)) throw new Error("请选择服务商");
+      v.baseUrl = site + "/api/image/" + v.provider;
+      v.model = typeof v.model === "string" ? v.model.trim() : "";
+      if (v.model && !/^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,127}$/.test(v.model))
+        throw new Error("模型 ID 只能包含字母、数字和 . _ : / @ + -");
+      v.generatePath = "/generate";
+      v.editPath = "/generate";
+      v.vectorizePath = "";
+    } else {
+      v.provider = "";
+    }
     if (v.protocol === "sensenova-proxy") {
       var origin = global.location && global.location.origin;
       if (!origin || !base(origin)) throw new Error("同源代理需要 HTTPS 或 localhost 页面");
@@ -132,9 +163,9 @@
       typeof v.apiKey !== "string" ||
       v.apiKey.length > 4096 ||
       /[\x00-\x20\x7f]/.test(v.apiKey) ||
-      (v.enabled && ["openai-images", "sensenova-proxy"].indexOf(v.protocol) >= 0 && !v.apiKey)
+      (v.enabled && ["openai-images", "sensenova-proxy", "multi-proxy"].indexOf(v.protocol) >= 0 && !v.apiKey)
     )
-      throw new Error("API key 必须填写且不能包含空白或控制字符");
+      throw new Error("请填写 API key（不能包含控制字符）");
     if (
       !path(v.generatePath, false) ||
       !path(v.editPath, true) ||
@@ -143,24 +174,26 @@
       throw new Error("API 路径无效");
     return v;
   }
-  function storage() {
+  function storage(remember) {
     try {
-      return global.sessionStorage;
+      return remember ? global.localStorage : global.sessionStorage;
     } catch (_) {
       return null;
     }
   }
+  function readRaw() {
+    var raw = null;
+    [false, true].some(function (remember) {
+      var s = storage(remember);
+      try { raw = s && s.getItem(KEY); } catch (_) { raw = null; }
+      return !!raw;
+    });
+    return raw;
+  }
   var api = {
     validateWorkflow: function (raw) { validWorkflow(raw); return true; },
     get: function () {
-      var s = storage(),
-        raw;
-      if (!s) return copy(DEFAULTS);
-      try {
-        raw = s.getItem(KEY);
-      } catch (_) {
-        return copy(DEFAULTS);
-      }
+      var raw = readRaw();
       if (!raw) return copy(DEFAULTS);
       try {
         return copy(valid(JSON.parse(raw)));
@@ -170,24 +203,28 @@
     },
     save: function (value) {
       var v = valid(value),
-        s = storage();
+        s = storage(v.remember),
+        other = storage(!v.remember);
       if (!s) throw new Error("当前浏览器不支持会话存储");
       try {
         s.setItem(KEY, JSON.stringify(v));
+        if (other) other.removeItem(KEY);
       } catch (_) {
         throw new Error("无法保存 API 设置");
       }
       return copy(v);
     },
     clear: function () {
-      var s = storage();
-      if (s) {
-        try {
-          s.removeItem(KEY);
-        } catch (_) {
-          throw new Error("无法清除 API 设置");
+      [false, true].forEach(function (remember) {
+        var s = storage(remember);
+        if (s) {
+          try {
+            s.removeItem(KEY);
+          } catch (_) {
+            throw new Error("无法清除 API 设置");
+          }
         }
-      }
+      });
       return copy(DEFAULTS);
     },
   };
