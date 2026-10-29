@@ -38,6 +38,154 @@ Graphic 是一个**本地优先**的网站。默认进入 Logo 创作，保留�
 
 固定同源 `GET /api/sensenova/models` 只转发到 `https://token.sensenova.cn/v1/models`，成功响应裁剪为 `{ "data": [{ "id": "..." }] }`，仅保留模型 ID；缺少或无效 `Authorization: Bearer <key>` 返回 `401`。它与生成/编辑共用同源来源、Fetch Metadata、禁止重定向、无开放 CORS 和静态错误边界。`403` 通过自身安全 `error.code` 区分来源拒绝与上游拒绝；`502`–`504` 的 `upstream_error`、`upstream_unavailable`、`invalid_upstream_response`、`upstream_timeout_or_cancelled` 等白名单码会在页面细分显示，未知码及原始正文不会展示。模型列表可访问不代表图片生成能力。
 
+## 各模式配置详解
+
+打开顶部 **配置 API**（或「更多 → API 接入状态」），勾选 **启用真实 API**，再在 **协议** 下拉框中选择以下四种之一。不勾选「启用真实 API」时始终是本地 demo，不发任何请求。
+
+| 模式（协议下拉框） | 请求发往 | 需要部署代理 | 适合 |
+|---|---|---|---|
+| 多服务商 · 本站代理（推荐） | 同源 `/api/image/<服务商>/...`，再由代理转发到固定官方地址 | ✅ Cloudflare Pages Functions / Worker，或 EdgeOne Cloud Functions | 大多数人：SenseNova、Seedream、硅基流动、智谱、OpenAI |
+| ComfyUI · 本机 API workflow | 浏览器直连本机 `http://127.0.0.1:8188` | ❌ | 本机跑 ComfyUI 的用户 |
+| OpenAI 兼容 Images | 浏览器直连你填写的 API 前缀 | ❌（但服务端必须允许 CORS） | 自有或第三方 OpenAI Images 兼容服务 |
+| Graphic 自有 JSON 契约 | 浏览器直连你自己的后端 | ❌（自有后端需允许 CORS） | 自建后端的开发者 |
+
+### 1. 多服务商 · 本站代理（推荐）
+
+| 字段 | 填什么 |
+|---|---|
+| 服务商 | SenseNova 国内 / SenseNova 国际版 / 火山方舟 Seedream / 硅基流动 / 智谱 CogView / OpenAI Images |
+| 模型 ID | 可从「检查 key 并获取模型」返回的列表选，也可自由填写 |
+| API key | 粘贴服务商控制台的 key；首尾空格、换行、引号、`Bearer ` 前缀会自动去掉 |
+| 保留服务商水印 | 默认不勾选＝请求无水印图（服务商支持时生效） |
+| 在这台设备上记住配置 | 勾选后存 `localStorage`，关闭标签页仍可用；共享电脑不要勾 |
+
+各服务商要点：
+
+| 服务商 | key 获取 | key 格式 | 单次张数 | 参考图编辑 | 建议模型 |
+|---|---|---|---|---|---|
+| SenseNova 国内 | <https://platform.sensenova.cn/console/keys> | `sk-` 开头 | 1（多张自动拆分） | ✅ | `sensenova-u1.5-lite` |
+| SenseNova 国际版 | <https://platform.sensenova.ai/> | 国际版 key（不能与国内互用） | 1 | ✅ | `sensenova-u1.5-lite` |
+| 火山方舟 Seedream | <https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey> | 通常是 UUID；模型需先在控制台开通 | 1 | ✅ | `doubao-seedream-4-0-250828`、`doubao-seedream-4-5-251128`、`doubao-seedream-5-0-260128` |
+| 硅基流动 | <https://cloud.siliconflow.cn/account/ak> | `sk-` 开头 | 4 | ✅（选 Edit / Kontext 类模型） | `Kwai-Kolors/Kolors`、`Qwen/Qwen-Image`、`Qwen/Qwen-Image-Edit-2509` |
+| 智谱 CogView | <https://open.bigmodel.cn/usercenter/apikeys> | `id.secret`（中间一个点） | 1 | ❌ 仅文生图 | `cogview-4-250304`、`cogview-3-flash` |
+| OpenAI Images | <https://platform.openai.com/api-keys> | `sk-proj-` / `sk-` | 4 | ✅ | `gpt-image-1`、`gpt-image-1-mini` |
+
+操作步骤：选服务商 → 粘贴 key → 点 **🔍 自动识别服务商** 或 **检查 key 并获取模型**（只读模型列表，不生图、不扣费）→ 选模型 → **保存配置** → 回到工具点 **生成 / 编辑**。
+
+常见报错：
+- **代理未部署**：`/api/image/...` 返回 404 或 HTML。只部署了 `public/`、或用 `python -m http.server` 本地预览都会这样，与 key 无关。
+- **401 / 403**：key 无效、过期，或账号未开通该模型的生图权限（模型出现在列表里不等于有权限）。
+- **404 / 400**：模型 ID 不存在，或尺寸、数量不被该模型接受。
+- **429 / 5xx**：额度、限流或上游故障。生成请求不自动重试，避免重复扣费。
+
+### 2. ComfyUI · 本机 API workflow
+
+| 字段 | 填什么 |
+|---|---|
+| 服务地址 | `http://127.0.0.1:8188`（仅允许 localhost / 127.0.0.1 / [::1]） |
+| workflow | 在 ComfyUI 里用「导出 (API)」得到的 **API 格式 JSON**，≤ 2 MiB、≤ 5,000 节点 |
+| 模型 / key | 不需要，由 workflow 决定 |
+
+点生成时页面把 workflow 原样提交到 `POST /prompt`，轮询 `/history/{id}`，再从 `/view` 取图。注意：
+- 页面的品牌名、提示词、参考图**不会**自动写进 workflow，出图内容完全由 workflow 本身决定。
+- 只支持生成，不支持续改、矢量化。
+- 启动 ComfyUI 时需允许页面来源跨域，例如 `python main.py --enable-cors-header "*"`（或指定你的站点域名）。HTTPS 线上站访问本机 HTTP 可能被浏览器的混合内容 / 本地网络权限拦截；本地用 `python -m http.server` 打开页面最容易连通。
+
+### 3. OpenAI 兼容 Images（非 Chat / Responses）
+
+| 字段 | 填什么 |
+|---|---|
+| 服务地址 / API 前缀 | 完整前缀，需要 `/v1` 时自己写上，例如 `https://api.example.com/v1`；只允许 HTTPS 或 localhost HTTP，不能带 `?`、`#`、账号密码 |
+| 模型 ID | 必填，服务商文档里的图像模型名 |
+| API key | 必填，以 `Authorization: Bearer` 发送 |
+
+无参考图时调用 `前缀/images/generations`（JSON）；有参考图或源图时调用 `前缀/images/edits`（multipart，字段 `image[]`）。返回 `data[].b64_json` 或 `data[].url` 均可。浏览器直连要求服务端允许页面来源的 CORS（含 `Authorization`、`Content-Type`），返回的图片 URL 也要允许跨域读取；不支持矢量化。
+
+### 4. Graphic 自有 JSON 契约
+
+| 字段 | 填什么 |
+|---|---|
+| 服务地址 | 你自己后端的 HTTPS 地址（本机开发可用 localhost HTTP） |
+| 生成 / 编辑路径 | 默认 `/generate`、`/edit` |
+| 矢量化路径 | 可选，填写后才启用 |
+| 模型 ID / key | 可选；key 有值时发送 `Authorization: Bearer` |
+
+请求为 `POST` JSON（字段 `tool`、`brand`、`concept`、`style`、`color`、`description`、`references`、`sourceImage`、`count` 等），响应为 `{ "items": [{ "id", "imageUrl", "name" }] }`，`imageUrl` 必须是可校验的栅格图（Data URL、同源路径或允许 CORS 的 HTTPS）。完整字段见 [API_INTEGRATION.md](./API_INTEGRATION.md#3-graphic-json-协议)。
+
+## 部署指南
+
+站点本体是纯静态文件（`public/`），任何静态托管都能打开；但 **「多服务商 · 本站代理」需要服务端函数**，只上传 `public/` 时页面能用，出图会提示「代理未部署」。
+
+### Cloudflare Pages（推荐，代理开箱即用）
+
+**方式 A：连接 GitHub（推荐）**
+
+1. Cloudflare 控制台 → Workers 和 Pages → 创建 → Pages → 连接到 Git，选择本仓库。
+2. 构建设置：
+
+   | 配置 | 值 |
+   |---|---|
+   | 生产分支 | `main` |
+   | 框架预设 | `None` |
+   | 构建命令 | `exit 0` |
+   | 构建输出目录 | `public` |
+   | 根目录 | **留空**（保持仓库根，这样 `functions/` 才会被部署） |
+
+3. 保存并部署。之后每次推送 `main` 自动重新部署。无需配置任何环境变量或 key，key 由用户在页面里填写。
+
+**方式 B：Wrangler 命令行**
+
+```bash
+# 在仓库根目录执行，不要 cd public
+npx wrangler login
+npx wrangler pages project create          # 首次：按提示填写项目名，生产分支 main
+npx wrangler pages deploy public --project-name <你的项目名> --branch main
+```
+
+输出里应看到 Functions 编译成功和部署地址。**不要**用控制台的拖拽上传，它只传静态文件、不部署 `functions/`。
+
+**部署后验证**：打开站点 → 配置 API → 选服务商并粘贴 key → 点「检查 key 并获取模型」。能返回模型列表说明代理已生效；提示「代理未部署」就回头检查根目录是否留空。
+
+本地完整预览（含代理）：在仓库根运行 `npx wrangler pages dev public --compatibility-date=2026-06-24`，打开 <http://localhost:8788>。更多细节见 [DEPLOY_CLOUDFLARE.md](./DEPLOY_CLOUDFLARE.md)。
+
+### 腾讯云 EdgeOne Pages / Makers
+
+EdgeOne Pages 已升级更名为 EdgeOne Makers，控制台和文档入口：<https://pages.edgeone.ai/zh>。仓库已带 EdgeOne 适配：`cloud-functions/`（Node.js Cloud Functions，提供与 Cloudflare 相同的 `/api/image/*`、`/api/sensenova/*` 路由）和根目录的 `edgeone.json`（输出目录 `public`、函数最长运行 120 秒）。
+
+**方式 A：导入 Git 仓库（推荐）**
+
+1. 登录 EdgeOne Makers 控制台 → 创建项目 → 导入 Git 仓库，授权 GitHub 并选择本仓库，生产分支 `main`。
+2. 构建设置：框架预设选「Other / 无」，构建命令、安装命令留空，**输出目录 `public`**，根目录保持仓库根（`edgeone.json` 已写好输出目录，控制台不填也会生效）。
+3. 加速区域：绑定自定义域名并选「中国大陆」或「全球（含中国大陆）」需要已备案域名；未备案选「全球（不含中国大陆）」。
+4. 部署完成后，构建日志里应能看到 Cloud Functions 构建成功；之后推送 `main` 自动重新部署。无需配置环境变量，key 由用户在页面里填写。
+
+**方式 B：命令行直接上传**
+
+```bash
+npm install -g edgeone
+edgeone login                          # 选 China（国内站）或 Global（国际站）
+# 在仓库根执行，CLI 会读取 edgeone.json 并一起构建 cloud-functions/
+edgeone makers deploy -n <项目名>      # 项目不存在会自动创建；预览环境加 -e preview
+```
+
+不要执行 `edgeone makers deploy ./public`：只上传 `public/` 时不包含 `cloud-functions/`，代理会 404。旧命令 `edgeone pages ...` 过渡期内仍可用。本地带函数预览可在仓库根运行 `edgeone makers dev`（默认 <http://localhost:8088>）。
+
+**部署后验证**：同 Cloudflare，打开站点 → 配置 API → 粘贴 key → 「检查 key 并获取模型」能返回列表即代理正常。
+
+**EdgeOne 上的限制（与 Cloudflare 不同）**
+
+| 项目 | 限制 | 影响 |
+|---|---|---|
+| 请求 / 响应体 | 各 6 MB | 参考图总大小建议 4 MB 以内（Base64 会膨胀约 1/3）；一次返回多张高分辨率图也可能超限，建议 EdgeOne 上每次出 1–2 张 |
+| 单次运行时长 | 默认 30 秒，本仓库 `edgeone.json` 设为上限 120 秒 | 超过 120 秒的出图会被平台中断（代理自身超时为 170 秒），慢模型建议用 Cloudflare |
+| Edge Functions（`edge-functions/`） | 请求体 1 MB、CPU 200 ms | 不适合本项目，所以适配用的是 Cloud Functions |
+
+说明：`cloud-functions/_lib/public-request.mjs` 会按 `Host` / `X-Forwarded-*` 还原对外域名，避免同源检查误拒；`cloud-functions/` 只复用 `lib/` 的代理代码，Cloudflare 部署不受影响。适配已通过离线 mock 测试（`node scripts/test-edgeone-adapter.mjs`），尚未在 EdgeOne 线上实测；若出现 403 `origin_not_allowed` 或代理 404，请反馈构建日志。
+
+### 只上传静态文件的托管（GitHub Pages、Nginx、对象存储等）
+
+把 `public/` 目录作为站点根即可。此时代理模式不可用，可用 demo、ComfyUI、OpenAI 兼容和自有 JSON 模式。
+
 ## 本地数据与演示边界
 
 作品和草稿使用当前浏览器的 `localStorage`；作品最多保留 60 条。参考图仍按旧模块规则处理（PNG/JPG/WebP、单张不超过 8 MB、最多 5 张），不会上传服务器或加入图标素材库，除非你主动保存 API 配置并发起真实请求。更换网址（包括从旧网址换到新临时地址）、设备或清除站点数据时，`localStorage` 不会同步，需重新添加或下载备份。
@@ -103,6 +251,9 @@ graphic-site/
 │   └── assets/                # 示例图标资源
 ├── lib/sensenova-proxy.mjs    # 受限转发与白名单校验
 ├── functions/                # Cloudflare Pages Functions（仓库根目录，部署时不放入 public/）
+├── cloud-functions/          # EdgeOne Makers Cloud Functions 适配（同样的 /api 路由）
+├── edgeone.json              # EdgeOne 输出目录与函数运行时长配置
+├── lib/image-proxy.mjs        # 多服务商出图代理（Cloudflare 与 EdgeOne 共用）
 ├── scripts/check-catalog.cjs  # 配置、路径和资源检查
 ├── scripts/test-api-settings.cjs # API 配置设置测试
 ├── scripts/test-api-errors.cjs # API 错误归一化测试
