@@ -1,27 +1,21 @@
-import * as PR from "../_lib/public-request.mjs";
 // TEMPORARY diagnostic endpoint (remove after EdgeOne body bug is fixed). Never echoes header values or body content.
+import { onRequest as imageRoute } from "./image/[provider]/[op].js";
+import { onRequest as snGen } from "./sensenova/images/generations.js";
+
 export async function onRequest(context) {
   const r = context.request;
-  const b = r.body;
-  const info = {
-    version: "debug-2", prExports: Object.keys(PR),
-    ctxKeys: Object.keys(context || {}),
-    reqCtor: r?.constructor?.name, isRequest: typeof Request !== "undefined" && r instanceof Request,
-    method: r.method, url: String(r.url).replace(/\?.*/, ""),
-    headersType: r.headers?.constructor?.name, headersHasGet: typeof r.headers?.get === "function",
-    headerNames: typeof r.headers?.keys === "function" ? [...r.headers.keys()] : Object.keys(r.headers || {}),
-    bodyType: b === null ? "null" : typeof b, bodyCtor: b?.constructor?.name,
-    bodyIsUint8: b instanceof Uint8Array, bodyHasGetReader: typeof b?.getReader === "function",
-    bodyAsyncIter: !!(b && typeof b[Symbol.asyncIterator] === "function"), bodyLocked: b?.locked,
-    bodyUsed: r.bodyUsed, hasArrayBuffer: typeof r.arrayBuffer === "function",
-    bodyKeys: b && typeof b === "object" && !(b instanceof Uint8Array) && !b.getReader ? Object.keys(b).slice(0, 20) : undefined,
+  const raw = await r.text().catch(() => null);
+  const info = { version: "debug-3", rawLen: raw?.length, bodyType: typeof r.body, bodyCtor: r.body?.constructor?.name };
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, opts) => { info.upstream = { url: String(url), method: opts?.method, bodyLen: opts?.body ? String(opts.body).length : 0 }; return new Response(JSON.stringify({ data: [] }), { status: 200, headers: { "content-type": "application/json" } }); };
+  const mk = (path) => {
+    const req = new Request("https://graphic-site.edgeone.dev" + path, { method: "POST", headers: { "content-type": "application/json", authorization: "Bearer sk-debugdebugdebug", origin: "https://graphic-site.edgeone.dev", host: "graphic-site.edgeone.dev" }, body: raw || "{}" });
+    return req;
   };
-  try {
-    const pr = await PR.publicRequest(r);
-    info.prUrl = pr.url.replace(/\?.*/, ""); info.prHasBody = !!pr.body;
-    const t = await pr.text(); info.prLen = t.length; info.prFirst = t.slice(0, 1);
-    try { JSON.parse(t); info.prJsonOk = true; } catch (e) { info.prJsonOk = false; info.prSample = t.replace(/[A-Za-z0-9]/g, "x").slice(0, 40); }
-  } catch (e) { info.prErr = String(e?.stack || e).slice(0, 600); }
-  try { const ab = await r.arrayBuffer(); info.arrayBufferLen = ab.byteLength; info.bodyFirstChar = new TextDecoder().decode(new Uint8Array(ab).slice(0, 1)); } catch (e) { info.arrayBufferErr = String(e?.message || e).slice(0, 200); }
+  for (const [name, fn, path, params] of [["image", imageRoute, "/api/image/siliconflow/generate", { provider: "siliconflow", op: "generate" }], ["sensenova", snGen, "/api/sensenova/images/generations", {}]]) {
+    try { const res = await fn({ request: mk(path), env: {}, params }); info[name] = { status: res.status, body: (await res.text()).slice(0, 300) }; }
+    catch (e) { info[name] = { err: String(e?.stack || e).slice(0, 800) }; }
+  }
+  globalThis.fetch = realFetch;
   return new Response(JSON.stringify(info, null, 1), { headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
 }
