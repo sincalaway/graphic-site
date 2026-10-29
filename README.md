@@ -180,7 +180,7 @@ edgeone makers deploy -n <项目名>      # 项目不存在会自动创建；预
 | 单次运行时长 | 默认 30 秒，本仓库 `edgeone.json` 设为上限 120 秒 | 超过 120 秒的出图会被平台中断（代理自身超时为 170 秒），慢模型建议用 Cloudflare |
 | Edge Functions（`edge-functions/`） | 请求体 1 MB、CPU 200 ms | 不适合本项目，所以适配用的是 Cloud Functions |
 
-说明：`cloud-functions/_lib/public-request.mjs` 会按 `Host` / `X-Forwarded-*` 还原对外域名，避免同源检查误拒；`cloud-functions/` 只复用 `lib/` 的代理代码，Cloudflare 部署不受影响。适配已通过离线 mock 测试（`node scripts/test-edgeone-adapter.mjs`），并已在 EdgeOne 线上实测：无 key 请求 `/api/sensenova/models` 返回 401 `missing_authorization`，跨站请求返回 403 `origin_not_allowed`（符合设计；在地址栏直接打开接口地址也可能看到 403，用页面里的「检查 key」测试即可）。若出现代理 404，请反馈构建日志。
+说明：EdgeOne 会把仓库里的 `functions/`（Cloudflare 用）当作 Edge Functions 部署，并抢在 `cloud-functions/` 之前处理 `/api`，在 EdgeOne 的 V8 运行时里会导致请求体读不到（400 `invalid_request`）或脚本崩溃（545）。因此 `edgeone.json` 设置了 `"buildCommand": "rm -rf functions"`，只在 EdgeOne 的构建副本里删掉它，仓库和 Cloudflare 部署不受影响；控制台的构建命令请保持为空，否则会覆盖这一设置。`cloud-functions/_lib/public-request.mjs` 会用 `EO-Pages-Host`（或 `X-Forwarded-*`）还原对外域名，避免同源检查误拒，并把平台预解析好的请求体还原成标准 `Request` 再交给 `lib/`。已在线上实测：生成、参考图编辑（multipart）和模型列表都能正常转发到服务商；跨站请求返回 403 `origin_not_allowed`（符合设计）。
 
 ### 只上传静态文件的托管（GitHub Pages、Nginx、对象存储等）
 
@@ -252,7 +252,7 @@ graphic-site/
 ├── lib/sensenova-proxy.mjs    # 受限转发与白名单校验
 ├── functions/                # Cloudflare Pages Functions（仓库根目录，部署时不放入 public/）
 ├── cloud-functions/          # EdgeOne Makers Cloud Functions 适配（同样的 /api 路由）
-├── edgeone.json              # EdgeOne 输出目录与函数运行时长配置
+├── edgeone.json              # EdgeOne 输出目录、函数时长；构建时删除 functions/
 ├── lib/image-proxy.mjs        # 多服务商出图代理（Cloudflare 与 EdgeOne 共用）
 ├── scripts/check-catalog.cjs  # 配置、路径和资源检查
 ├── scripts/test-api-settings.cjs # API 配置设置测试
