@@ -1,8 +1,6 @@
 {
   "outputDirectory": "public",
   "cloudFunctions": {
-    "nodejs": {
-      "maxDuration": 120
-    }
+    "maxDuration": 120
   }
 }

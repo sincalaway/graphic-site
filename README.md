@@ -155,7 +155,7 @@ EdgeOne Pages 已升级更名为 EdgeOne Makers，控制台和文档入口：<ht
 **方式 A：导入 Git 仓库（推荐）**
 
 1. 登录 EdgeOne Makers 控制台 → 创建项目 → 导入 Git 仓库，授权 GitHub 并选择本仓库，生产分支 `main`。
-2. 构建设置：框架预设选「Other / 无」，构建命令、安装命令留空，**输出目录 `public`**，根目录保持仓库根（`edgeone.json` 已写好输出目录，控制台不填也会生效）。
+2. 构建设置：框架预设选「Other / 无」，构建命令、安装命令留空，**输出目录 `public`**，根目录保持仓库根（表单不允许留空时填 `./`；`edgeone.json` 已写好输出目录，控制台不填也会生效）。
 3. 加速区域：绑定自定义域名并选「中国大陆」或「全球（含中国大陆）」需要已备案域名；未备案选「全球（不含中国大陆）」。
 4. 部署完成后，构建日志里应能看到 Cloud Functions 构建成功；之后推送 `main` 自动重新部署。无需配置环境变量，key 由用户在页面里填写。
 
@@ -180,7 +180,7 @@ edgeone makers deploy -n <项目名>      # 项目不存在会自动创建；预
 | 单次运行时长 | 默认 30 秒，本仓库 `edgeone.json` 设为上限 120 秒 | 超过 120 秒的出图会被平台中断（代理自身超时为 170 秒），慢模型建议用 Cloudflare |
 | Edge Functions（`edge-functions/`） | 请求体 1 MB、CPU 200 ms | 不适合本项目，所以适配用的是 Cloud Functions |
 
-说明：`cloud-functions/_lib/public-request.mjs` 会按 `Host` / `X-Forwarded-*` 还原对外域名，避免同源检查误拒；`cloud-functions/` 只复用 `lib/` 的代理代码，Cloudflare 部署不受影响。适配已通过离线 mock 测试（`node scripts/test-edgeone-adapter.mjs`），尚未在 EdgeOne 线上实测；若出现 403 `origin_not_allowed` 或代理 404，请反馈构建日志。
+说明：`cloud-functions/_lib/public-request.mjs` 会按 `Host` / `X-Forwarded-*` 还原对外域名，避免同源检查误拒；`cloud-functions/` 只复用 `lib/` 的代理代码，Cloudflare 部署不受影响。适配已通过离线 mock 测试（`node scripts/test-edgeone-adapter.mjs`），并已在 EdgeOne 线上实测：无 key 请求 `/api/sensenova/models` 返回 401 `missing_authorization`，跨站请求返回 403 `origin_not_allowed`（符合设计；在地址栏直接打开接口地址也可能看到 403，用页面里的「检查 key」测试即可）。若出现代理 404，请反馈构建日志。
 
 ### 只上传静态文件的托管（GitHub Pages、Nginx、对象存储等）
 
