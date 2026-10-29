@@ -41,4 +41,5 @@ for (const [name, make] of Object.entries(shapes)) {
 }
 const boom = await image({ request: { url: "http://10.0.0.5:9000/api/image/sensenova/generate", method: "POST", headers: hdrs, get body() { throw new Error("x"); } }, env: {}, params: { provider: "sensenova", op: "generate" } });
 assert.equal(boom.status, 500, "adapter crash returns JSON 500, not a platform 545");
+assert.equal((await publicRequest(new Request("http://pages-pro-1.qcloudteo.com/api/x", { headers: { host: "pages-pro-1.qcloudteo.com", "eo-pages-host": "graphic.example.com" } }))).url, "https://graphic.example.com/api/x", "EO-Pages-Host gives the public origin");
 console.log("edgeone adapter: ok");

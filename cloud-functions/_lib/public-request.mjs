@@ -67,8 +67,10 @@ async function readBody(request) {
 export async function publicRequest(request) {
   const url = new URL(request.url, "http://localhost");
   const raw = request.headers;
-  const host = header(raw, "x-forwarded-host").split(",")[0].trim() || header(raw, "host").split(",")[0].trim();
-  const proto = header(raw, "x-forwarded-proto").split(",")[0].trim().toLowerCase();
+  // EdgeOne passes the public hostname in EO-Pages-Host; Host / request.url are the internal SCF address.
+  const eoHost = header(raw, "eo-pages-host").split(",")[0].trim();
+  const host = header(raw, "x-forwarded-host").split(",")[0].trim() || eoHost || header(raw, "host").split(",")[0].trim();
+  const proto = header(raw, "x-forwarded-proto").split(",")[0].trim().toLowerCase() || (eoHost ? "https" : "");
   if (proto === "https" || proto === "http") url.protocol = proto + ":";
   if (host && HOST_RE.test(host)) {
     const [name, port = ""] = host.split(":");
