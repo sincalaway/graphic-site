@@ -68,8 +68,14 @@ Graphic 是一个**本地优先**的网站。默认进入 Logo 创作，保留�
 无需安装依赖、构建或 Webdev。在仓库根目录运行：
 
 ```bash
+# macOS / Linux
 python3 -m http.server 8000 --directory public
+
+# Windows（通常没有 python3 命令，用 python 或 py）
+python -m http.server 8000 --directory public
 ```
+
+8000 端口被占用时换成其他端口（如 `8080`）。这只是静态预览，`/api/...` 出图代理会返回 404；要本地测试代理，安装 Node.js 后在仓库根运行 `npx wrangler pages dev public --compatibility-date=2026-06-24`，再打开它输出的地址（默认 <http://localhost:8788>）。
 
 打开 <http://localhost:8000>，停止服务器按 `Ctrl+C`。静态资源输出目录为 `public/`，不要公开整个仓库；使用同源模式时还必须从仓库根通过 Pages 编译并部署 `functions/`，不能仅上传静态文件。若要浏览器直连真实服务，发布站点和服务端需按文档配置 HTTPS/CORS。Cloudflare Pages Functions 的本地预览应使用 `npx wrangler pages dev public`；仅 `python3 -m http.server` 不能执行 Functions。
 

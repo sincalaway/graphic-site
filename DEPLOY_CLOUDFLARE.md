@@ -27,6 +27,7 @@ SenseNova 专用模式 `protocol='sensenova-proxy'` 依赖同源 Pages Function�
 
 ```bash
 python3 -m http.server 8000 --directory public
+# Windows：python -m http.server 8000 --directory public
 ```
 
 这只是静态 Python 预览，**不会执行或验证 `functions/`**，因此不能用来验证 `sensenova-proxy`。
