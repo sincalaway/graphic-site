@@ -87,7 +87,9 @@ export async function publicRequest(request) {
 /** Wrap a handler so an adapter crash returns JSON instead of EdgeOne's 545 page. */
 export async function runProxy(handler) {
   try {
-    return await handler();
+    const res = await handler();
+    try { res.headers.set("X-Graphic-Adapter", "2"); } catch (_) { /* immutable headers */ }
+    return res;
   } catch (error) {
     const code = error?.message === "too_large" ? "request_too_large" : "adapter_error";
     return new Response(JSON.stringify({ error: { code } }), {
