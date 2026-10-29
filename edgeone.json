@@ -1,4 +1,5 @@
 {
+  "buildCommand": "rm -rf functions",
   "outputDirectory": "public",
   "cloudFunctions": {
     "maxDuration": 120
