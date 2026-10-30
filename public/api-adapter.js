@@ -208,6 +208,7 @@
       PROXY_UPSTREAM: ["服务商返回错误", "服务商拒绝或未能完成请求。", "核对 key、模型和额度。"],
       PROXY_UNAVAILABLE: ["连不上服务商", "本站代理无法连接到服务商接口。", "稍后再试；若持续出现，可能是服务商在该地区不可用。"],
       PROXY_TIMEOUT: ["服务商响应超时", "等待服务商生成超时。", "服务端可能仍在生成并计费；先查服务商用量记录再重试。"],
+      PROXY_TASK_FAILED: ["服务商任务失败", "服务商排队后报告生成失败。", "常见原因：提示词被审核拦截、模型不支持参考图或尺寸；换个模型或修改提示词再试。"],
       PROXY_BAD_RESPONSE: ["服务商响应无法识别", "服务商没有返回可用的图片结果。", "确认所选模型是图像生成模型（不是聊天模型）。"],
       PROXY_RESULT_IMAGE: ["结果图片下载失败", "服务商已返回图片链接，但本站代理没能下载。", "生成可能已经完成并计费，请到服务商控制台查看，不要直接重复生成。"],
       HTTP_ERROR: ["API 返回 HTTP 错误", "服务端拒绝或未能完成请求。", "核对 API 配置与服务商状态；这里不会显示服务端原始错误正文。"],
@@ -233,6 +234,7 @@
         m = ["服务商暂时异常", label + "返回 " + up + "。", "稍后再试；先确认没有重复任务再重新生成。"];
       if (d.upstreamMessage) m = [m[0], m[1] + " 服务商说明：" + d.upstreamMessage, m[2]];
     }
+    if (code === "PROXY_TASK_FAILED" && e.details && e.details.upstreamMessage) m = [m[0], m[1] + " 服务商说明：" + e.details.upstreamMessage, m[2]];
     if (e && e.details && e.details.diag) m = [m[0], m[1] + "（诊断：" + e.details.diag + "）", m[2]];
     if (code === "HTTP_ERROR" && status) {
       if (status === 401 || status === 403)
@@ -739,6 +741,8 @@
         if (e && e.name === "AbortError") throw e;
         throw new ApiError("PROXY_NOT_DEPLOYED", "本站代理没有返回 JSON");
       }
+      if (p.async && result && typeof result.task_id === "string" && !Array.isArray(result.data))
+        result = await pollProxyTask(s, p, result.task_id, signal);
       if (!result || !Array.isArray(result.data) || !result.data.length)
         throw new ApiError("PROXY_BAD_RESPONSE", "服务商响应无法识别");
       result.data.forEach(function (x) {
@@ -752,6 +756,35 @@
       if (result.data.length < n) break;
     }
     return { items: items.slice(0, wanted) };
+  }
+  // Async providers (ModelScope): the job is queued upstream; ask the proxy about it every few
+  // seconds. Each check is a short request, so no host time limit applies to the whole wait.
+  async function pollProxyTask(s, p, taskId, signal) {
+    var started = Date.now(), wait = 3000, limit = 10 * 60 * 1000;
+    for (;;) {
+      await new Promise(function (resolve, reject) {
+        var timer = setTimeout(resolve, wait);
+        if (signal) signal.addEventListener("abort", function () {
+          clearTimeout(timer); var e = new Error("取消"); e.name = "AbortError"; reject(e);
+        }, { once: true });
+      });
+      if (Date.now() - started > limit)
+        throw new ApiError("PROXY_TIMEOUT", "服务商排队超时", { status: 504, provider: p.label });
+      var response = await fetch(global.location.origin + "/api/image/" + encodeURIComponent(s.provider) + "/task", {
+        method: "POST", credentials: "same-origin", redirect: "error", cache: "no-store", signal: signal,
+        headers: { Accept: "application/json", "Content-Type": "application/json", Authorization: "Bearer " + s.apiKey },
+        body: JSON.stringify({ task_id: taskId }),
+      });
+      if (!response || !response.ok) throw await proxyFailure(response, p);
+      var result;
+      try { result = await response.json(); }
+      catch (e) {
+        if (e && e.name === "AbortError") throw e;
+        throw new ApiError("PROXY_NOT_DEPLOYED", "本站代理没有返回 JSON");
+      }
+      if (result && Array.isArray(result.data)) return result;
+      wait = Math.min(wait + 1000, 6000);
+    }
   }
   async function proxyFailure(response, provider) {
     var status = response && response.status, body = null;
@@ -770,7 +803,7 @@
       edit_not_supported: "PROXY_EDIT_UNSUPPORTED", unknown_provider: "API_CONFIG_INVALID",
       upstream_error: "PROXY_UPSTREAM", upstream_unavailable: "PROXY_UNAVAILABLE",
       upstream_timeout_or_cancelled: "PROXY_TIMEOUT", invalid_upstream_response: "PROXY_BAD_RESPONSE",
-      upstream_response_too_large: "PROXY_BAD_RESPONSE", result_image_unavailable: "PROXY_RESULT_IMAGE",
+      upstream_response_too_large: "PROXY_BAD_RESPONSE", upstream_task_failed: "PROXY_TASK_FAILED", result_image_unavailable: "PROXY_RESULT_IMAGE",
       request_too_large: "PROXY_INVALID_INPUT", models_not_supported: "API_OPERATION_UNSUPPORTED",
     };
     var details = { status: status, provider: provider ? provider.label : "" };

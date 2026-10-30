@@ -19,7 +19,7 @@ Graphic 是一个**本地优先**的网站。默认进入 Logo 创作，保留�
 
 顶部状态栏的 **“配置 API”**，以及“更多”菜单中的 **“API 接入状态”** 都会打开同一个配置面板。手机上按以下步骤操作：
 
-**推荐：多服务商 · 本站代理**。打开 **配置 API**，默认即为该模式：选择服务商（SenseNova 国内/国际、火山方舟 Seedream、硅基流动、智谱 CogView、OpenAI Images），粘贴 key（多余空格、换行、引号或 `Bearer ` 前缀会自动去掉），点 **🔍 自动识别服务商** 或 **检查 key 并获取模型**（只读模型列表，不生图、不扣费），模型 ID 可从列表选择或自由填写。可选「在这台设备上记住配置」。请求经同源 `/api/image/<provider>/...` 转发到固定官方地址，详见 API_INTEGRATION.md。**部署后提示代理未部署 / key 无法使用时，先确认 Cloudflare Pages 是从仓库根部署（含 `functions/`），而不是只上传 `public/`。**
+**推荐：多服务商 · 本站代理**。打开 **配置 API**，默认即为该模式：选择服务商（SenseNova 国内/国际、火山方舟 Seedream、硅基流动、智谱 CogView、魔搭 ModelScope、OpenAI Images），粘贴 key（多余空格、换行、引号或 `Bearer ` 前缀会自动去掉），点 **🔍 自动识别服务商** 或 **检查 key 并获取模型**（只读模型列表，不生图、不扣费），模型 ID 可从列表选择或自由填写。可选「在这台设备上记住配置」。请求经同源 `/api/image/<provider>/...` 转发到固定官方地址，详见 API_INTEGRATION.md。**部署后提示代理未部署 / key 无法使用时，先确认 Cloudflare Pages 是从仓库根部署（含 `functions/`），而不是只上传 `public/`。**
 
 以下为旧版及高级模式说明：
 
@@ -44,7 +44,7 @@ Graphic 是一个**本地优先**的网站。默认进入 Logo 创作，保留�
 
 | 模式（协议下拉框） | 请求发往 | 需要部署代理 | 适合 |
 |---|---|---|---|
-| 多服务商 · 本站代理（推荐） | 同源 `/api/image/<服务商>/...`，再由代理转发到固定官方地址 | ✅ Cloudflare Pages Functions / Worker，或 EdgeOne Cloud Functions | 大多数人：SenseNova、Seedream、硅基流动、智谱、OpenAI |
+| 多服务商 · 本站代理（推荐） | 同源 `/api/image/<服务商>/...`，再由代理转发到固定官方地址 | ✅ Cloudflare Pages Functions / Worker，或 EdgeOne Cloud Functions | 大多数人：SenseNova、Seedream、硅基流动、智谱、魔搭、OpenAI |
 | ComfyUI · 本机 API workflow | 浏览器直连本机 `http://127.0.0.1:8188` | ❌ | 本机跑 ComfyUI 的用户 |
 | OpenAI 兼容 Images | 浏览器直连你填写的 API 前缀 | ❌（但服务端必须允许 CORS） | 自有或第三方 OpenAI Images 兼容服务 |
 | Graphic 自有 JSON 契约 | 浏览器直连你自己的后端 | ❌（自有后端需允许 CORS） | 自建后端的开发者 |
@@ -53,7 +53,7 @@ Graphic 是一个**本地优先**的网站。默认进入 Logo 创作，保留�
 
 | 字段 | 填什么 |
 |---|---|
-| 服务商 | SenseNova 国内 / SenseNova 国际版 / 火山方舟 Seedream / 硅基流动 / 智谱 CogView / OpenAI Images |
+| 服务商 | SenseNova 国内 / SenseNova 国际版 / 火山方舟 Seedream / 硅基流动 / 智谱 CogView / 魔搭 ModelScope / OpenAI Images |
 | 模型 ID | 可从「检查 key 并获取模型」返回的列表选，也可自由填写 |
 | API key | 粘贴服务商控制台的 key；首尾空格、换行、引号、`Bearer ` 前缀会自动去掉 |
 | 保留服务商水印 | 默认不勾选＝请求无水印图（服务商支持时生效） |
@@ -68,6 +68,7 @@ Graphic 是一个**本地优先**的网站。默认进入 Logo 创作，保留�
 | 火山方舟 Seedream | <https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey> | 通常是 UUID；模型需先在控制台开通 | 1 | ✅ | `doubao-seedream-4-0-250828`、`doubao-seedream-4-5-251128`、`doubao-seedream-5-0-260128` |
 | 硅基流动 | <https://cloud.siliconflow.cn/account/ak> | `sk-` 开头 | 4 | ✅（选 Edit / Kontext 类模型） | `Kwai-Kolors/Kolors`、`Qwen/Qwen-Image`、`Qwen/Qwen-Image-Edit-2509` |
 | 智谱 CogView | <https://open.bigmodel.cn/usercenter/apikeys> | `id.secret`（中间一个点） | 1 | ❌ 仅文生图 | `cogview-4-250304`、`cogview-3-flash` |
+| 魔搭 ModelScope | <https://modelscope.cn/my/myaccesstoken> | `ms-` 开头；需绑定阿里云并实名 | 1 | ✅ `image_url` 数组 | `Qwen/Qwen-Image`、`Tongyi-MAI/Z-Image-Turbo`、`Qwen/Qwen-Image-Edit-2509`（异步任务：代理提交拿 task_id，前端每 3–6 秒经 `/api/image/modelscope/task` 查询，单次请求很短，不受 EdgeOne 120 秒限制） |
 | OpenAI Images | <https://platform.openai.com/api-keys> | `sk-proj-` / `sk-` | 4 | ✅ | `gpt-image-1`、`gpt-image-1-mini` |
 
 操作步骤：选服务商 → 粘贴 key → 点 **🔍 自动识别服务商** 或 **检查 key 并获取模型**（只读模型列表，不生图、不扣费）→ 选模型 → **保存配置** → 回到工具点 **生成 / 编辑**。

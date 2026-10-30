@@ -13,6 +13,7 @@
 | `ark` | `https://ark.cn-beijing.volces.com/api/v3` | 1 | ✅ `image` 数组 | ✅ | `doubao-seedream-4-0-250828`、`doubao-seedream-4-5-251128`、`doubao-seedream-5-0-260128` |
 | `siliconflow` | `https://api.siliconflow.cn/v1` | 4 | ✅ | ✅ | `Kwai-Kolors/Kolors` 等 |
 | `zhipu` | `https://open.bigmodel.cn/api/paas/v4` | 1 | ❌ 仅文生图 | ❌ | `cogview-4-250304`、`cogview-3-flash`、`glm-image` |
+| `modelscope` | `https://api-inference.modelscope.cn/v1` | 1 | ✅ `image_url` 数组 | ✅ | 异步：`POST /images/generations`（`X-ModelScope-Async-Mode: true`）→ `task_id`；`POST /api/image/modelscope/task {task_id}` → 代理查 `GET /tasks/<id>`（`X-ModelScope-Task-Type: image_generation`），未完成返回 202 pending，完成返回 `{data:[{b64_json,mime}]}` |
 | `openai` | `https://api.openai.com/v1` | 4 | ✅ multipart | ✅ | `gpt-image-1`、`gpt-image-1-mini`、`dall-e-3` |
 
 统一接口（均由 `functions/api/image/[provider]/[op].js` 和 `worker.mjs` 提供）：

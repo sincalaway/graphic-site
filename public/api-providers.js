@@ -20,6 +20,10 @@
     { id: "zhipu", label: "智谱 BigModel · CogView", maxN: 1, edit: false, models: false,
       keyUrl: "https://open.bigmodel.cn/usercenter/apikeys", suggested: ["cogview-4-250304", "cogview-3-flash", "glm-image"],
       keyHint: "格式为 id.secret（中间有一个点）；仅支持文生图" },
+    { id: "modelscope", label: "魔搭 ModelScope", maxN: 1, edit: true, models: true, async: true,
+      keyUrl: "https://modelscope.cn/my/myaccesstoken",
+      suggested: ["Qwen/Qwen-Image", "Tongyi-MAI/Z-Image-Turbo", "Qwen/Qwen-Image-Edit-2509"],
+      keyHint: "ms- 开头的访问令牌；账号需先绑定阿里云并实名。出图是排队任务，页面会自动等待结果" },
     { id: "openai", label: "OpenAI Images", maxN: 4, edit: true, models: true,
       keyUrl: "https://platform.openai.com/api-keys", suggested: ["gpt-image-1", "gpt-image-1-mini", "dall-e-3"],
       keyHint: "sk-proj- / sk- 开头" },
@@ -43,6 +47,7 @@
     if (/^[0-9a-f]{32}\.[A-Za-z0-9]{10,}$/i.test(key)) return ["zhipu"];
     if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key)) return ["ark"];
     if (/^sk-(?:proj|svcacct|admin)-/.test(key)) return ["openai"];
+    if (/^ms-/.test(key)) return ["modelscope"];
     if (/^sk-/.test(key)) return ["sensenova", "siliconflow", "sensenova-intl", "openai"];
     return LIST.map(function (p) { return p.id; });
   }
