@@ -200,7 +200,8 @@
       PROXY_EDIT_UNSUPPORTED: ["该服务商不支持参考图", "所选服务商只支持文生图。", "去掉参考图 / 手稿后再生成，或在「配置 API」换一个支持编辑的服务商（如 SenseNova、豆包 Seedream、硅基流动 Edit 模型）。"],
       PROXY_ORIGIN_NOT_ALLOWED: ["本站来源检查拒绝", "请求没有通过本站代理的来源检查，尚未发给服务商。", "请直接在浏览器打开本站，不要嵌在其他网站里使用。这与 key 无关。"],
       PROXY_EDGE_FORBIDDEN: ["本站前置安全验证", "Cloudflare 返回了安全验证页面，而不是本站代理的结果。", "刷新页面完成验证后再试；这与 key 无关。"],
-      PROXY_NOT_DEPLOYED: ["本站代理未部署", "访问 /api/image 没有得到代理的 JSON 响应。", "Cloudflare Pages 需从仓库根目录部署（构建输出 public、根目录留空），functions/ 才会生效；拖拽上传 public 不包含代理。"],
+      PROXY_NOT_DEPLOYED: ["本站代理未部署", "访问 /api/image 没有得到代理的 JSON 响应。", "需从仓库根目录部署（构建输出 public）：Cloudflare Pages 用 functions/，EdgeOne Makers 用 cloud-functions/ 与 edgeone.json；拖拽上传 public 不包含代理。"],
+      PROXY_GATEWAY_TIMEOUT: ["本站代理超时", "托管平台在等待出图时中断了请求（HTTP 502/504）。", "服务商可能仍在生成并计费，先查服务商用量再重试；可减少生成张数或参考图，EdgeOne 上函数最长运行 120 秒。"],
       PROXY_MISSING_KEY: ["没有收到 API key", "本站代理没有收到有效的 Authorization。", "在「配置 API」重新粘贴 key 并保存；key 太短或为空会被视为未填写。"],
       PROXY_INVALID_N: ["生成数量超出服务商限制", "该服务商每次请求生成的张数有限制。", "页面会自动拆成多次请求；如仍出现，请把生成数量改为 1 张。"],
       PROXY_INVALID_INPUT: ["请求参数无效", "模型 ID、提示词或参考图未通过本站代理校验。", "检查模型 ID 是否填写正确；参考图仅支持不超过 8 MB 的 PNG/JPEG/WebP，最多 6 张。"],
@@ -759,7 +760,8 @@
     if (/json/i.test(type)) { try { body = await response.json(); } catch (_) { body = null; } }
     var err = body && body.error;
     if (!err || typeof err.code !== "string")
-      return new ApiError(status === 403 && /html/i.test(type) ? "PROXY_EDGE_FORBIDDEN" : "PROXY_NOT_DEPLOYED",
+      return new ApiError(status === 403 && /html/i.test(type) ? "PROXY_EDGE_FORBIDDEN"
+        : [502, 504, 524, 545].indexOf(status) >= 0 ? "PROXY_GATEWAY_TIMEOUT" : "PROXY_NOT_DEPLOYED",
         "本站代理不可用（HTTP " + (status || 0) + "）", { status: status });
     var map = {
       origin_not_allowed: "PROXY_ORIGIN_NOT_ALLOWED", missing_authorization: "PROXY_MISSING_KEY",
@@ -811,7 +813,7 @@
         var result = await proxyModels(p.id, apiKey, 15000);
         return { provider: p.id, models: result.models, imageModels: result.imageModels };
       } catch (e) {
-        if (e && ["PROXY_NOT_DEPLOYED", "PROXY_EDGE_FORBIDDEN", "PROXY_ORIGIN_NOT_ALLOWED"].indexOf(e.code) >= 0) throw e;
+        if (e && ["PROXY_NOT_DEPLOYED", "PROXY_GATEWAY_TIMEOUT", "PROXY_EDGE_FORBIDDEN", "PROXY_ORIGIN_NOT_ALLOWED"].indexOf(e.code) >= 0) throw e;
       }
     }
     if (unchecked.length === 1 && candidates.length === 1) return { provider: unchecked[0], models: [], unverified: true };

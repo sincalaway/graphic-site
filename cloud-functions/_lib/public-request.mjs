@@ -100,3 +100,8 @@ export async function runProxy(handler) {
     });
   }
 }
+
+/** EdgeOne kills a Cloud Function at cloudFunctions.maxDuration (120 s); stop waiting on the provider a bit earlier so the page gets a JSON timeout, not a platform 504. */
+export function edgeEnv(env) {
+  return { ...(env || {}), PROXY_TIMEOUT_MS: 110000 };
+}

@@ -177,7 +177,7 @@ edgeone makers deploy -n <项目名>      # 项目不存在会自动创建；预
 | 项目 | 限制 | 影响 |
 |---|---|---|
 | 请求 / 响应体 | 各 6 MB | 参考图总大小建议 4 MB 以内（Base64 会膨胀约 1/3）；一次返回多张高分辨率图也可能超限，建议 EdgeOne 上每次出 1–2 张 |
-| 单次运行时长 | 默认 30 秒，本仓库 `edgeone.json` 设为上限 120 秒 | 超过 120 秒的出图会被平台中断（代理自身超时为 170 秒），慢模型建议用 Cloudflare |
+| 单次运行时长 | 默认 30 秒，本仓库 `edgeone.json` 设为上限 120 秒 | 已实测 105 秒仍正常返回。EdgeOne 上代理在 110 秒时主动放弃等待并返回超时 JSON（Cloudflare 上为 170 秒），避免平台直接回 504；慢模型、多张高清图建议减少张数或用 Cloudflare |
 | Edge Functions（`edge-functions/`） | 请求体 1 MB、CPU 200 ms | 不适合本项目，所以适配用的是 Cloud Functions |
 
 说明：EdgeOne 会把仓库里的 `functions/`（Cloudflare 用）当作 Edge Functions 部署，并抢在 `cloud-functions/` 之前处理 `/api`，在 EdgeOne 的 V8 运行时里会导致请求体读不到（400 `invalid_request`）或脚本崩溃（545）。因此 `edgeone.json` 设置了 `"buildCommand": "rm -rf functions"`，只在 EdgeOne 的构建副本里删掉它，仓库和 Cloudflare 部署不受影响；控制台的构建命令请保持为空，否则会覆盖这一设置。`cloud-functions/_lib/public-request.mjs` 会用 `EO-Pages-Host`（或 `X-Forwarded-*`）还原对外域名，避免同源检查误拒，并把平台预解析好的请求体还原成标准 `Request` 再交给 `lib/`。已在线上实测：生成、参考图编辑（multipart）和模型列表都能正常转发到服务商；跨站请求返回 403 `origin_not_allowed`（符合设计）。
