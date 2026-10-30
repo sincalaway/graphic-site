@@ -713,6 +713,15 @@
   // count is split into several requests when the provider only makes 1 image per call.
   async function proxyRequest(op, raw, s, signal) {
     var p = providerOf(s), job = openaiPayload(raw, s), wanted = job.payload.n;
+    // Edit-only models (Qwen-Image-Edit, Kontext…) refuse a request without an image. When the user
+    // uploaded none, send the selected style card as a style-only reference.
+    if (op !== "edit" && !job.images.length && p.edit && /edit|kontext/i.test(s.model || "")) {
+      var styleRef = await styleReference(raw, signal);
+      if (styleRef) {
+        job.images = [styleRef];
+        job.payload.prompt += "\n参考图仅用于参考「" + text(raw.style || "所选") + "」风格的造型语言、配色和质感；不要照搬其中的图形，请为上述品牌重新设计。";
+      }
+    }
     if (op === "edit" && !job.images.length)
       throw new ApiError("INVALID_REQUEST", "编辑操作需要图片");
     if (job.images.length && !p.edit)
@@ -756,6 +765,19 @@
       if (result.data.length < n) break;
     }
     return { items: items.slice(0, wanted) };
+  }
+  async function styleReference(raw, signal) {
+    var i = raw && raw.styleIndex;
+    if (!Number.isInteger(i) || i < 0 || i > 9) return "";
+    try {
+      var response = await fetch(global.location.origin + "/assets/style-" + i + ".png", { credentials: "same-origin", redirect: "error", signal: signal });
+      if (!response.ok) return "";
+      var bytes = new Uint8Array(await response.arrayBuffer());
+      return bytes.length && bytes.length < 8 * 1024 * 1024 ? bytesToData(bytes, "image/png") : "";
+    } catch (e) {
+      if (e && e.name === "AbortError") throw e;
+      return "";
+    }
   }
   // Async providers (ModelScope): the job is queued upstream; ask the proxy about it every few
   // seconds. Each check is a short request, so no host time limit applies to the whole wait.
