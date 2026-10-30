@@ -233,6 +233,7 @@
         m = ["服务商暂时异常", label + "返回 " + up + "。", "稍后再试；先确认没有重复任务再重新生成。"];
       if (d.upstreamMessage) m = [m[0], m[1] + " 服务商说明：" + d.upstreamMessage, m[2]];
     }
+    if (e && e.details && e.details.diag) m = [m[0], m[1] + "（诊断：" + e.details.diag + "）", m[2]];
     if (code === "HTTP_ERROR" && status) {
       if (status === 401 || status === 403)
         m = ["认证或权限失败", "服务返回 HTTP " + status + "。", "在 API 配置中核对 key 是否有效，以及该账号对端点和模型是否有权限；也可能是服务商的访问策略。不要把 key 发到聊天或日志。"];
@@ -776,6 +777,7 @@
     if (Number.isInteger(err.upstream_status)) details.upstreamStatus = err.upstream_status;
     if (typeof err.upstream_type === "string" && /^[A-Za-z0-9_.-]{1,64}$/.test(err.upstream_type)) details.upstreamType = err.upstream_type;
     if (typeof err.upstream_message === "string") details.upstreamMessage = err.upstream_message.slice(0, 220);
+    if (typeof err.diag === "string") details.diag = err.diag.replace(/[^\w .,=:\/+-]/g, "").slice(0, 200);
     return new ApiError(map[err.code] || "HTTP_ERROR", "API 请求失败（HTTP " + (status || 0) + "）", details);
   }
   async function proxyModels(providerId, apiKey, timeoutMs) {
