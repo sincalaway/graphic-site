@@ -737,13 +737,14 @@
   // count is split into several requests when the provider only makes 1 image per call.
   async function proxyRequest(op, raw, s, signal) {
     var p = providerOf(s), job = openaiPayload(raw, s), wanted = job.payload.n;
-    // Edit-only models (Qwen-Image-Edit, Kontext…) refuse a request without an image. When the user
-    // uploaded none, send the selected style card as a style-only reference.
+    // Edit-only models (Qwen-Image-Edit, Fibo Edit, Kontext…) refuse a request without an image. When the user
+    // uploaded none, send a blank white canvas so the model draws from the text alone. (Sending the style
+    // card made models copy the sample graphic instead of designing a new one.)
     if (op !== "edit" && !job.images.length && p.edit && /edit|kontext/i.test(s.model || "")) {
-      var styleRef = await styleReference(raw, signal);
-      if (styleRef) {
-        job.images = [styleRef];
-        job.payload.prompt += "\nThe attached image is only a style example: borrow its visual language, color treatment and finish, but do not copy its shape or letters; design a new mark for this brand.";
+      var canvas = await blankCanvas(signal);
+      if (canvas) {
+        job.images = [canvas];
+        job.payload.prompt += "\nThe attached image is a blank white canvas: draw the complete new logo on it from scratch.";
       }
     }
     if (op === "edit" && !job.images.length)
@@ -790,14 +791,12 @@
     }
     return { items: items.slice(0, wanted) };
   }
-  async function styleReference(raw, signal) {
-    var i = raw && raw.styleIndex;
-    if (!Number.isInteger(i) || i < 0 || i > 9) return "";
+  async function blankCanvas(signal) {
     try {
-      var response = await fetch(global.location.origin + "/assets/style-" + i + ".png", { credentials: "same-origin", redirect: "error", signal: signal });
+      var response = await fetch(global.location.origin + "/assets/blank-canvas.png", { credentials: "same-origin", redirect: "error", signal: signal });
       if (!response.ok) return "";
       var bytes = new Uint8Array(await response.arrayBuffer());
-      return bytes.length && bytes.length < 8 * 1024 * 1024 ? bytesToData(bytes, "image/png") : "";
+      return bytes.length && bytes.length < 1024 * 1024 ? bytesToData(bytes, "image/png") : "";
     } catch (e) {
       if (e && e.name === "AbortError") throw e;
       return "";
