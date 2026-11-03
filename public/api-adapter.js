@@ -263,24 +263,17 @@
   // Concrete visual language for each style card (index = assets/style-N.png). A bare style name such as
   // "极简" leaves text-to-image models guessing, so every request spells the look out in words.
   var STYLE_GUIDE = [
-    "minimalist flat logo: one bold solid shape built from simple geometry, smart negative space, single color (black or the brand color), no gradients, no shadows, no texture, reads clearly at 16 px",
-    "geometric line logo: clean monoline strokes, precise geometric construction such as triangles, impossible figures or interlocking lines, strong symmetry and order, black line art",
-    "vibrant gradient logo: bold letterform or mark filled with smooth overlapping multicolor gradients (pink, orange, yellow, green, blue, purple), translucent layered facets, modern and glossy",
-    "mascot logo: friendly character or animal head emblem, bold dark outlines, flat colors with simple faceted shading, expressive and memorable, sports-badge feel",
-    "hand-drawn logo: organic botanical illustration with watercolor or ink texture, loose brush strokes, soft natural greens, an imperfect hand-painted circle or frame",
-    "luxury logo: elegant thin gold lines with metallic gold gradient, refined flowing curves, graceful silhouette, generous whitespace, premium and restrained",
-    "retro vintage badge logo: circular or shield emblem with ribbon banner, bold slab or serif lettering with the brand name set along the circle or on the ribbon, muted vintage colors (cream, charcoal, orange), classic heritage feel",
-    "tech logo: angular futuristic mark with pixel blocks or circuit-like cuts, electric blue to indigo gradient, sharp precise edges, digital and innovative",
-    "Chinese style logo: Chinese calligraphy brush strokes or a seal/ink motif, ink-wash black with a touch of cinnabar red, Eastern aesthetics such as mountains, water ripples or clouds, modern and tasteful",
-    "cute logo: round chubby shapes and a kawaii character with big simple eyes, playful thick dark outlines, soft cheerful colors, friendly and lovable",
+    "minimalist flat logo, one bold solid symbol built from simple geometry with clever negative space, single flat color, no gradients, no shadows, no texture, clean modern sans-serif wordmark",
+    "geometric line-art logo, precise monoline strokes forming a geometric figure (triangles, impossible shapes, interlocking lines), strong symmetry, black line art, clean sans-serif wordmark",
+    "vibrant gradient logo, a bold monogram made of overlapping translucent ribbons in smooth multicolor gradients (pink, orange, yellow, green, blue, purple), glossy modern look, the full brand name in clean dark sans-serif next to the mark",
+    "mascot logo, a friendly cartoon character or animal head that fits the brand, bold dark outlines, flat colors with simple faceted shading, expressive face, esports-style emblem, bold wordmark",
+    "hand-drawn logo, organic botanical illustration with watercolor and ink texture, loose brush strokes, soft natural greens, an imperfect hand-painted circle, handwritten-style wordmark",
+    "luxury logo, elegant thin lines in metallic gold gradient, refined flowing curves, graceful minimal silhouette, high-contrast serif wordmark, lots of whitespace, premium and restrained",
+    "retro vintage badge logo, circular emblem with a ribbon banner, the brand name in bold slab-serif letters on the ribbon, muted vintage colors (cream, charcoal, burnt orange), stars or simple line ornaments instead of extra words",
+    "tech logo, angular futuristic symbol with pixel blocks or circuit-like cuts, electric blue to indigo gradient, sharp precise edges, geometric sans-serif wordmark",
+    "Chinese style logo, calligraphy brush strokes and ink-wash motifs (mountains, water ripples, clouds), black ink with a small cinnabar-red seal, elegant Eastern aesthetics, modern layout",
+    "cute kawaii logo, round chubby character with big simple eyes and blush cheeks, thick dark outlines, soft pastel colors, rounded bubbly wordmark",
   ];
-  var TOOL_BRIEF = {
-    logo: "Design a professional brand logo.",
-    appicon: "Design a square mobile app icon: one centered bold symbol on a full-bleed background, no text unless asked, no device frame or mockup.",
-    sketch: "Turn the provided hand-drawn sketch into a polished, professional logo, keeping its main shape and idea.",
-    mockup: "Place the provided logo naturally into a photorealistic brand mockup scene. Keep the logo unchanged.",
-    vectorizer: "Redraw the provided image as a clean flat vector-style graphic with solid colors.",
-  };
   function colorName(hex) {
     var n = parseInt(hex.slice(1), 16), R = (n >> 16) & 255, G = (n >> 8) & 255, B = n & 255;
     var max = Math.max(R, G, B), min = Math.min(R, G, B), l = (max + min) / 510, d = max - min;
@@ -291,22 +284,25 @@
     return (l < 0.3 ? "deep " : l > 0.75 ? "light " : "") + hue;
   }
   function promptFor(r) {
-    var lines = [TOOL_BRIEF[r.tool] || TOOL_BRIEF.logo];
-    var brand = text(r.brand).trim();
-    if (brand && r.tool !== "mockup" && r.tool !== "vectorizer")
-      lines.push(r.tool === "appicon" ? "App name: " + brand + " (for context; do not write it on the icon unless asked)." : 'Brand name: "' + brand + '". Render the name exactly as written, spelled correctly.');
-    if (text(r.subtitle).trim()) lines.push('Tagline under the name: "' + text(r.subtitle).trim() + '".');
-    if (text(r.concept).trim()) lines.push("What the brand/app is about (context only, never write this text in the image): " + text(r.concept).trim());
+    var brand = text(r.brand).trim(), concept = text(r.concept).trim(), sub = text(r.subtitle).trim();
     var guide = Number.isInteger(r.styleIndex) ? STYLE_GUIDE[r.styleIndex] : "";
-    if (guide) lines.push("Style (" + text(r.style) + "): " + guide + ". Follow this style strictly.");
-    else if (text(r.style).trim() && text(r.style).trim() !== "不指定") lines.push("Style: " + text(r.style).trim());
-    if (/^#[0-9a-f]{6}$/i.test(text(r.color))) lines.push((r.tool === "appicon" ? "Icon background color: " : "Primary brand color: ") + colorName(r.color) + " (hex " + r.color + "; never write the hex code in the image).");
-    if (r.platform) lines.push("Platform: " + r.platform + ".");
-    if (r.scene) lines.push("Mockup scene: " + r.scene + ".");
-    if (text(r.description).trim()) lines.push("Extra requirements: " + text(r.description).trim());
+    var style = guide || (text(r.style).trim() && text(r.style).trim() !== "不指定" ? text(r.style).trim() + " style" : "");
+    var color = /^#[0-9a-f]{6}$/i.test(text(r.color)) ? colorName(r.color) : "";
+    var lines = [], named = brand && r.tool !== "mockup" && r.tool !== "vectorizer";
+    if (r.tool === "appicon")
+      lines.push("Square mobile app icon" + (concept ? " for an app about " + concept : "") + ": one centered bold symbol filling a full-bleed " + (color || "colored") + " background, no text.");
+    else if (r.tool === "sketch") lines.push("Turn the provided hand-drawn sketch into a polished professional logo, keeping its main shape and idea" + (named ? ', with the brand name "' + brand + '"' : "") + ".");
+    else if (r.tool === "mockup") lines.push("Place the provided logo naturally into a photorealistic brand mockup scene" + (r.scene ? " (" + r.scene + ")" : "") + ". Keep the logo unchanged.");
+    else if (r.tool === "vectorizer") lines.push("Redraw the provided image as a clean flat vector-style graphic with solid colors.");
+    else lines.push("Logo design for the brand \"" + brand + "\"" + (concept ? ", " + concept : "") + ".");
+    if (style) lines.push(style + ".");
+    if (color && r.tool !== "appicon") lines.push("Main color " + color + ".");
+    if (named && r.tool === "logo") lines.push('The wordmark reads "' + brand + '"' + (sub ? ' with the tagline "' + sub + '"' : "") + ", spelled exactly, fully visible.");
+    if (r.platform) lines.push("Platform " + r.platform + ".");
+    if (text(r.description).trim()) lines.push(text(r.description).trim());
     if (r.tool === "logo" || r.tool === "sketch")
-      lines.push("Flat vector logo isolated on a pure white (#FFFFFF) background, centered, crisp edges. " + (brand && r.tool === "logo" ? "The only text allowed is the brand name" + (text(r.subtitle).trim() ? " and tagline" : "") + "; no other words, letters or numbers." : "No words or letters unless asked.") + " No mockup, no photo, no watermark.");
-    else if (r.tool === "appicon") lines.push("Flat vector icon art filling the whole square canvas, crisp edges, no rounded-corner mask, no watermark.");
+      lines.push("Flat vector logo floating in the center of the image. The whole image background is solid pure white from edge to edge.");
+    else if (r.tool === "appicon") lines.push("Flat vector icon art covering the whole square, no rounded-corner mask, no watermark.");
     return lines.join("\n");
   }
   function imageType(type) {

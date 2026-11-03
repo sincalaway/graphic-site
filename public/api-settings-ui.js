@@ -49,6 +49,25 @@
             : "此协议不支持或未配置该操作；可在「管理 API」切回 demo"
           : "本地演示 · 不扣费";
     }
+    const row = q("#quick-model-row"), menu = q("#quick-model");
+    const prov = remote && s.protocol === "multi-proxy" && window.GraphicImageProviders ? GraphicImageProviders.get(s.provider) : null;
+    if (row && menu) {
+      row.classList.toggle("hidden", !prov);
+      if (prov) {
+        const ids = [...new Set([...prov.suggested, s.model].filter(Boolean))];
+        menu.innerHTML = ids.map((id) => `<option value="${esc(id)}">${esc(GraphicImageProviders.modelLabel(id))}</option>`).join("");
+        menu.value = s.model;
+        menu.onchange = () => {
+          try {
+            GraphicAPISettings.save({ ...GraphicAPISettings.get(), model: menu.value });
+            refresh();
+            toast("已切换模型：" + menu.value.split("/").pop());
+          } catch (error) {
+            toast(error.message || "无法切换模型");
+          }
+        };
+      }
+    }
     if (q(".demo-note"))
       q(".demo-note").textContent = remote
         ? "使用你自行配置的生成服务；不连接原站账号、积分或支付。"

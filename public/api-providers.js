@@ -52,7 +52,23 @@
     return LIST.map(function (p) { return p.id; });
   }
 
+  /** Short Chinese notes shown in the quick model menu (model id → what it is good for). */
+  var MODEL_NOTES = {
+    "Qwen/Qwen-Image": "文生图 · 中文字准确，推荐",
+    "Tongyi-MAI/Z-Image-Turbo": "文生图 · 快",
+    "Qwen/Qwen-Image-Edit-2509": "改图 · 中文字准确",
+    "Qwen/Qwen-Image-Edit": "改图",
+    "briaai/Fibo-2.0-edit-turbo": "改图 · 4 步快，中文字易乱码",
+    "Kwai-Kolors/Kolors": "文生图",
+    "black-forest-labs/FLUX.1-schnell": "文生图 · 快",
+  };
+  function modelLabel(id) {
+    var short = String(id).split("/").pop();
+    return MODEL_NOTES[id] ? short + "（" + MODEL_NOTES[id] + "）" : short;
+  }
+
   global.GraphicImageProviders = Object.freeze({
+    modelLabel: modelLabel,
     list: function () { return LIST.slice(); },
     get: function (id) { return BY_ID[id] || null; },
     ids: function () { return LIST.map(function (p) { return p.id; }); },
