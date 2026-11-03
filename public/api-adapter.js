@@ -275,6 +275,11 @@
     "tech logo, angular futuristic symbol with pixel blocks or circuit-like cuts, electric blue to indigo gradient, sharp precise edges, geometric sans-serif wordmark",
     "Chinese style logo, calligraphy brush strokes and ink-wash motifs (mountains, water ripples, clouds), black ink with a small cinnabar-red seal, elegant Eastern aesthetics, modern layout",
     "cute kawaii logo, round chubby character with big simple eyes and blush cheeks, thick dark outlines, soft pastel colors, rounded bubbly wordmark",
+    "continuous single-line drawing logo, one unbroken flowing line of uniform weight forming the symbol, elegant fluid stroke, single dark color, light clean sans-serif wordmark",
+    "monogram logo, the brand initials interlocked and fused into one compact geometric emblem, single solid color, crisp modern construction, clean sans-serif wordmark",
+    "3D logo, a glossy three-dimensional symbol with soft studio lighting, subtle reflections and a gentle drop shadow, rich saturated colors, bold rounded sans-serif wordmark",
+    "neon logo, glowing neon tube outlines with bright magenta and cyan glow, the symbol and the brand name drawn as neon light lines, vivid nightlife energy",
+    "paper-cut logo, layered cut-paper symbol made of stacked paper sheets with soft shadows between layers, warm colors, handcrafted feel, friendly rounded wordmark",
   ];
   function colorName(hex) {
     var n = parseInt(hex.slice(1), 16), R = (n >> 16) & 255, G = (n >> 8) & 255, B = n & 255;

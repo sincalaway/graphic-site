@@ -38,7 +38,7 @@
     var request = buildRequest(input);
     if (!request.tool || TOOLS.indexOf(request.tool) === -1) throw new ContractError('INVALID_REQUEST', 'tool 不是支持的操作');
     ['brand','concept','style','color','subtitle','description','platform','scene','intelligence'].forEach(function (k) { text(request[k], k, MAX[k]); });
-    if (request.styleIndex !== undefined && (!Number.isInteger(request.styleIndex) || request.styleIndex < 0 || request.styleIndex > 9)) throw new ContractError('INVALID_REQUEST', 'styleIndex 必须是 0 至 9 的整数');
+    if (request.styleIndex !== undefined && (!Number.isInteger(request.styleIndex) || request.styleIndex < 0 || request.styleIndex > 14)) throw new ContractError('INVALID_REQUEST', 'styleIndex 必须是 0 至 9 的整数');
     if (request.count !== undefined && (!Number.isInteger(request.count) || request.count < 1 || request.count > 10)) throw new ContractError('INVALID_REQUEST', 'count 必须是 1 至 10 的整数');
     if (request.intelligence !== undefined && ['fast','smart','pro','balanced'].indexOf(request.intelligence) === -1) throw new ContractError('INVALID_REQUEST', 'intelligence 档位无效');
     image(request.sourceImage, 'sourceImage');
