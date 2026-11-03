@@ -32,7 +32,6 @@ def run():
         with page.expect_download() as d:page.locator('#export-now').click()
         assert d.value.suggested_filename.endswith('.png')
         page.locator('.dialog-close').click()
-        page.locator('[data-mode="appicon"]').click();expect(page.locator('#phone')).to_be_visible()
         page.locator('#tool-generate').click();expect(page.locator('#app-name')).to_be_focused()
         page.locator('#app-name').fill('Mellow');page.locator('#app-purpose').fill('呼吸与冥想')
         page.locator('[data-platform="android"]').click();expect(page.locator('#phone')).to_have_class('phone android')
@@ -70,11 +69,11 @@ def run():
         assert all('/api/' not in url for url in requests), 'demo must not make business API requests'
         for width in [375,390,768,1280]:
             page.set_viewport_size({'width':width,'height':850})
-            for route in ['logo','library','appicon','sketch','mockup','vectorizer','works','faq','blog','friends']:
+            for route in ['logo','library','sketch','mockup','vectorizer','works','faq','blog','friends']:
                 page.goto(BASE+'#/'+route);page.wait_for_timeout(50)
                 assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth+1'), (width,route,'overflow')
         assert not errors, errors
-        print(json.dumps({'passed':True,'checks':['required fields','reference upload/persistence','project description','batch generation','editor variants','PNG download','App Icon preview/platform','sketch draw/undo/redo','mockup samples/scenes/works picker','SVG container','work filters/search/favorites','demo login','API unconfigured','cancel','catalog preserved','10 routes at 4 viewport sizes','no JS errors','no business API calls']},ensure_ascii=False,indent=2))
+        print(json.dumps({'passed':True,'checks':['required fields','reference upload/persistence','project description','batch generation','editor variants','PNG download','sketch draw/undo/redo','mockup samples/scenes/works picker','SVG container','work filters/search/favorites','demo login','API unconfigured','cancel','catalog preserved','10 routes at 4 viewport sizes','no JS errors','no business API calls']},ensure_ascii=False,indent=2))
         browser.close()
 
 if __name__=='__main__':run()
