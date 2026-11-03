@@ -47,7 +47,6 @@ def run():
         page.reload()
         assert not page.evaluate('GraphicAPI.status().demo'), 'same-tab reload should retain settings'
         page.locator('#brand').fill('云图 API')
-        page.locator('#concept').fill('品牌概念')
         page.locator('#generate').click()
         expect(page.locator('#result-grid .result-card')).to_have_count(1)
         assert calls[-1]['url'].endswith('/v1/images/generations')

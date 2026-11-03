@@ -48,7 +48,6 @@ def run():
         assert page.locator('#api-key').input_value() == ''
 
         page.locator('#brand').fill('错误测试')
-        page.locator('#concept').fill('稳定文案')
         page.locator('#generate').click()
         expect(page.locator('#result-grid .result-card')).to_have_count(1)
         original_count = page.locator('#result-grid .result-card').count()

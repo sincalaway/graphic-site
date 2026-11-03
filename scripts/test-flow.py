@@ -15,7 +15,7 @@ def run():
         page.on('request',lambda r:requests.append(r.url))
         page.goto(BASE); expect(page.locator('#generate')).to_be_visible()
         page.locator('#generate').click();expect(page.locator('#brand')).to_be_focused()
-        page.locator('#brand').fill('云图 Studio');page.locator('#concept').fill('让每一份创意生长')
+        page.locator('#brand').fill('云图 Studio')
         page.locator('[data-tab="detail"]').click()
         page.locator('#ref-files').set_input_files(str(ROOT/'public/assets/style-4.png'))
         expect(page.locator('.reference-item')).to_have_count(1)
