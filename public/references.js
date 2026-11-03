@@ -100,7 +100,7 @@ async function addRefs(files) {
   return referenceQueue;
 }
 async function referenceColor() {
-  if (!refs.length || !$('#use-reference-color').checked) return '';
+  if (!refs.length) return '';
   const image = await loadImage(refs[0]);
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = 48;
