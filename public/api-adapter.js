@@ -292,7 +292,7 @@
     var lines = [], named = brand && r.tool !== "mockup" && r.tool !== "vectorizer";
     if (r.tool === "appicon")
       lines.push("Square mobile app icon" + (concept ? " for an app about " + concept : "") + ": one centered bold symbol filling a full-bleed " + (color || "colored") + " background, no text.");
-    else if (r.tool === "sketch") lines.push("Turn the provided hand-drawn sketch into a polished professional logo, keeping its main shape and idea" + (named ? ', with the brand name "' + brand + '"' : "") + ".");
+    else if (r.tool === "sketch") lines.push("Turn the provided hand-drawn sketch into a polished professional logo. Keep the sketch's main shapes, composition and idea, and clean them into crisp vector forms" + (named ? ', with the brand name "' + brand + '"' : "") + "." + (text(r.description).trim() ? "" : " Interpret what the sketch depicts and refine it faithfully."));
     else if (r.tool === "mockup") lines.push("Place the provided logo naturally into a photorealistic brand mockup scene" + (r.scene ? " (" + r.scene + ")" : "") + ". Keep the logo unchanged.");
     else if (r.tool === "vectorizer") lines.push("Redraw the provided image as a clean flat vector-style graphic with solid colors.");
     else lines.push("Logo design for the brand \"" + brand + "\"" + (concept ? ", " + concept : "") + ".");
