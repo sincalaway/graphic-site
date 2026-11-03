@@ -1,0 +1,169 @@
+{
+  "4": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "qwen_image_2.1_int8_convrot.safetensors",
+      "weight_dtype": "default"
+    },
+    "_meta": {
+      "title": "加载 Qwen Image 2.1 扩散模型"
+    }
+  },
+  "5": {
+    "class_type": "QwenImage21Cache",
+    "inputs": {
+      "model": [
+        "4",
+        0
+      ],
+      "device": "auto",
+      "dtype": "default"
+    },
+    "_meta": {
+      "title": "Qwen Image 2.1 条件缓存"
+    }
+  },
+  "6": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen3vl_8b_int8_convrot.safetensors",
+      "type": "qwen_image",
+      "device": "default"
+    },
+    "_meta": {
+      "title": "加载 Qwen3-VL 8B 编码器"
+    }
+  },
+  "7": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "qwen_image_2.1_vae_bf16.safetensors"
+    },
+    "_meta": {
+      "title": "加载 Qwen Image 2.1 VAE"
+    }
+  },
+  "8": {
+    "class_type": "TextEncodeQwenImage21",
+    "inputs": {
+      "clip": [
+        "6",
+        0
+      ],
+      "vae": [
+        "7",
+        0
+      ],
+      "prompt": "{{prompt}}",
+      "negative_prompt": "blurry, low quality, watermark, extra text, photo, mockup",
+      "resolution": 0
+    },
+    "_meta": {
+      "title": "Qwen Image 2.1 提示词编码（提示词由网站填入）"
+    }
+  },
+  "9": {
+    "class_type": "KSampler",
+    "inputs": {
+      "model": [
+        "5",
+        0
+      ],
+      "positive": [
+        "8",
+        0
+      ],
+      "negative": [
+        "8",
+        1
+      ],
+      "latent_image": [
+        "14",
+        0
+      ],
+      "seed": "{{seed}}",
+      "steps": 25,
+      "cfg": 1,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1
+    },
+    "_meta": {
+      "title": "KSampler 采样器"
+    }
+  },
+  "10": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "9",
+        0
+      ],
+      "vae": [
+        "7",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "VAE 解码"
+    }
+  },
+  "11": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "10",
+        0
+      ],
+      "filename_prefix": "graphic-logo"
+    },
+    "_meta": {
+      "title": "保存生成结果"
+    }
+  },
+  "12": {
+    "class_type": "ResolutionSelector",
+    "inputs": {
+      "aspect_ratio": "1:1 (Square)",
+      "megapixels": 1,
+      "multiple": 32
+    },
+    "_meta": {
+      "title": "自定义画布分辨率"
+    }
+  },
+  "13": {
+    "class_type": "EmptyLatentImage",
+    "inputs": {
+      "width": [
+        "12",
+        0
+      ],
+      "height": [
+        "12",
+        1
+      ],
+      "batch_size": "{{batch}}"
+    },
+    "_meta": {
+      "title": "自定义尺寸 Latent"
+    }
+  },
+  "14": {
+    "class_type": "ComfySwitchNode",
+    "inputs": {
+      "on_false": [
+        "8",
+        2
+      ],
+      "on_true": [
+        "13",
+        0
+      ],
+      "switch": true
+    },
+    "_meta": {
+      "title": "画布尺寸：使用自定义 1:1 画布"
+    }
+  }
+}

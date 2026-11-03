@@ -196,6 +196,7 @@
       COMFYUI_HTTP_ERROR: ["ComfyUI 请求失败", "本机 ComfyUI 返回 HTTP 错误。", "检查 ComfyUI API 状态与导入 workflow；页面不会显示响应正文。"],
       COMFYUI_INVALID_RESPONSE: ["ComfyUI 响应格式无效", "没有收到可识别的 ComfyUI API 响应。", "确认地址指向 ComfyUI 服务且已导入 API 格式 workflow JSON。"],
       COMFYUI_WORKFLOW_FAILED: ["ComfyUI workflow 执行失败", "本机 ComfyUI 报告 workflow 未完成。", "请在 ComfyUI 查看节点执行错误；本页面不读取或展示错误详情。"],
+      COMFYUI_NEEDS_IMAGE: ["需要参考图", "导入的 workflow 含 {{image}} 占位符，但这次没有上传参考图。", "先在细节页上传一张参考图，或换用不含 {{image}} 的 workflow。"],
       COMFYUI_NO_OUTPUT: ["workflow 没有可用图片输出", "ComfyUI 已完成，但历史结果中没有可读取的图片。", "确认导入的 API workflow 包含图片保存/输出节点；需要为目标 workflow 单独确认节点映射。"],
       PROXY_EDIT_UNSUPPORTED: ["该服务商不支持参考图", "所选服务商只支持文生图。", "去掉参考图 / 手稿后再生成，或在「配置 API」换一个支持编辑的服务商（如 SenseNova、豆包 Seedream、硅基流动 Edit 模型）。"],
       PROXY_ORIGIN_NOT_ALLOWED: ["本站来源检查拒绝", "请求没有通过本站代理的来源检查，尚未发给服务商。", "请直接在浏览器打开本站，不要嵌在其他网站里使用。这与 key 无关。"],
@@ -505,10 +506,64 @@
     try { return await response.json(); }
     catch (_) { throw new ApiError("COMFYUI_INVALID_RESPONSE", "ComfyUI 未返回有效 JSON"); }
   }
-  async function runComfyWorkflow(s, signal) {
+  // Placeholders a workflow may carry. A string that is exactly "{{seed}}" or "{{batch}}"
+  // becomes a number; {{prompt}} / {{brand}} are replaced inside any string.
+  var COMFY_PLACEHOLDERS = ["prompt", "brand", "seed", "batch", "image"];
+  function comfyPlaceholders(json) {
+    return COMFY_PLACEHOLDERS.filter(function (k) { return json.indexOf("{{" + k + "}}") >= 0; });
+  }
+  function fillComfy(node, vars) {
+    if (typeof node === "string") {
+      if (node === "{{seed}}") return vars.seed;
+      if (node === "{{batch}}") return vars.batch;
+      return node.replace(/\{\{(prompt|brand|image)\}\}/g, function (_, k) { return vars[k] == null ? "" : String(vars[k]); });
+    }
+    if (Array.isArray(node)) return node.map(function (v) { return fillComfy(v, vars); });
+    if (node && typeof node === "object") {
+      var out = {};
+      Object.keys(node).forEach(function (k) { out[k] = fillComfy(node[k], vars); });
+      return out;
+    }
+    return node;
+  }
+  function dataUrlBlob(dataUrl) {
+    var m = /^data:([^;,]+);base64,(.*)$/.exec(dataUrl);
+    if (!m) throw new ApiError("INVALID_REQUEST", "参考图格式无效");
+    var bin = atob(m[2]), bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new Blob([bytes], { type: m[1] });
+  }
+  async function uploadComfyImage(s, dataUrl, signal) {
+    var blob = dataUrlBlob(dataUrl), ext = (blob.type.split("/")[1] || "png").replace("jpeg", "jpg");
+    var form = new FormData();
+    form.append("image", blob, "graphic-reference-" + Date.now() + "." + ext);
+    form.append("overwrite", "true");
+    var r = await comfyJSON(comfyUrl(s, "/upload/image"), {
+      method: "POST", credentials: "omit", redirect: "error", cache: "no-store",
+      headers: { Accept: "application/json" }, body: form, signal: signal,
+    });
+    if (!r || typeof r.name !== "string" || !r.name)
+      throw new ApiError("COMFYUI_INVALID_RESPONSE", "ComfyUI 上传参考图未返回文件名");
+    return r.subfolder ? r.subfolder + "/" + r.name : r.name;
+  }
+  async function runComfyWorkflow(s, signal, input) {
     var workflow;
     try { workflow = JSON.parse(s.workflowJson); }
     catch (_) { throw new ApiError("COMFYUI_INVALID_RESPONSE", "导入的 workflow JSON 无效"); }
+    var used = comfyPlaceholders(s.workflowJson);
+    if (used.length && input) {
+      var image = input.sourceImage || (Array.isArray(input.references) && input.references[0]) || "";
+      if (used.indexOf("image") >= 0 && !image)
+        throw new ApiError("COMFYUI_NEEDS_IMAGE", "此 workflow 需要参考图");
+      var count = Number(input.count) || 1;
+      workflow = fillComfy(workflow, {
+        prompt: promptFor(input),
+        brand: text(input.brand).trim(),
+        seed: Math.floor(Math.random() * 4294967295),
+        batch: Math.max(1, Math.min(4, count)),
+        image: used.indexOf("image") >= 0 ? await uploadComfyImage(s, image, signal) : "",
+      });
+    }
     var prompt = await comfyJSON(comfyUrl(s, "/prompt"), {
       method: "POST", credentials: "omit", redirect: "error", cache: "no-store",
       headers: { Accept: "application/json", "Content-Type": "application/json" },
@@ -597,8 +652,11 @@
     var phase = "reference-image";
     try {
       if (selected.kind === "user" && c.protocol === "comfyui-api") {
+        var comfyInput = null;
+        if (comfyPlaceholders(c.workflowJson).length)
+          comfyInput = await prepareImages(contract.validateRequest(input), controller ? controller.signal : external);
         phase = "request";
-        var comfy = await runComfyWorkflow(c, controller ? controller.signal : external);
+        var comfy = await runComfyWorkflow(c, controller ? controller.signal : external, comfyInput);
         phase = "response";
         return contract.validateItems(comfy, global.location && global.location.origin);
       }

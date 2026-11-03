@@ -123,7 +123,7 @@ Function 最多读取 20 MiB 上游响应，只保留 `data[].b64_json` 或安�
 
 此模式连接用户本机 ComfyUI，配置地址仅允许 `http://localhost`、`http://127.0.0.1` 或 `http://[::1]`（以及对应 HTTPS loopback），默认 `http://127.0.0.1:8188`。配置面板要求导入 ComfyUI 导出的 **API 格式 workflow JSON**；校验其为节点 ID 到 `{class_type, inputs}` 的对象，并限制文件大小为 2 MiB、节点数最多 5,000。导入与保存只在浏览器本地校验并写入当前标签页 `sessionStorage`，不会探测本机服务或执行 workflow。
 
-用户之后主动点击生成时，前端按标准 ComfyUI API 流程将导入内容原样作为 `prompt` 提交至 `POST /prompt`，再轮询 `GET /history/{prompt_id}` 并通过 `GET /view` 读取输出图片。请求不会自动重试。**当前页面的品牌、提示词、参考图、模型与批量数量不会自动映射或写入 workflow**；项目不猜节点 ID、模型或输入字段。要对接某一具体工作流，需要先提供并导入由 ComfyUI 导出的 API JSON；若要让页面动态修改节点输入，还需按该工作流明确字段映射。本模式当前只支持运行生成 workflow，不支持续改或矢量化。
+用户之后主动点击生成时，前端按标准 ComfyUI API 流程将导入内容原样作为 `prompt` 提交至 `POST /prompt`，再轮询 `GET /history/{prompt_id}` 并通过 `GET /view` 读取输出图片。请求不会自动重试。项目不猜节点 ID 或输入字段，而是替换 workflow 中的占位符：`{{prompt}}`（与云端相同的英文提示词）、`{{brand}}`（品牌名）、`{{seed}}`（整值占位，随机整数）、`{{batch}}`（整值占位，张数 1–4）、`{{image}}`（第一张参考图，先经 `POST /upload/image` 上传，再填返回的 `subfolder/name`；没有参考图时报 `COMFYUI_NEEDS_IMAGE`，不提交）。无占位符时 workflow 原样提交。示例见 `docs/comfyui-qwen-image-2.1-logo.json` 与 `docs/comfyui-qwen-image-2.1-logo-ref.json`。本模式当前只支持运行生成 workflow，不支持续改或矢量化。
 
 页面通过浏览器直连本机服务，需 ComfyUI 可从页面的浏览器上下文访问并按需允许 CORS。`svg.devs.li` 等 HTTPS 页面访问 `http://127.0.0.1:8188` 可能被混合内容、本地网络权限或浏览器策略拦截；仓库实现了配置与 API 框架，不能保证每个浏览器环境都能连通。本地 mock 测试不访问真实 ComfyUI，也不产生图片。
 

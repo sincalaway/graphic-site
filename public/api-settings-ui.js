@@ -15,7 +15,7 @@
       ? s.protocol === "comfyui-api" ? "ComfyUI 本机接口 · 浏览器直连" : s.protocol === "multi-proxy" ? "使用你的 API · 经本站代理" : "使用你的 API · 浏览器直连 / 自有后端"
       : "API 未配置 · 本地演示";
     q(".generate-hint").textContent = remote
-      ? s.protocol === "comfyui-api" ? "运行已导入的 workflow；当前页面提示词不会自动映射" : "真实 API · 提示词与参考图将发送到所选服务"
+      ? s.protocol === "comfyui-api" ? "运行已导入的 workflow；含占位符时填入页面提示词" : "真实 API · 提示词与参考图将发送到所选服务"
       : "本地模板 · 非 AI 生成 · 不扣费";
     q("#credits").textContent = remote ? s.protocol === "comfyui-api" ? "本机资源" : "服务商计费" : "演示 · 不扣费";
     q("#level-description").textContent = remote
@@ -88,7 +88,7 @@
       <label class="form-label" id="api-key-label">API key <span id="api-key-required">*</span><span class="api-key-row"><input id="api-key" type="password" autocomplete="new-password" spellcheck="false" placeholder="只保存在本标签页会话，不写入仓库" maxlength="4096"><button type="button" class="secondary" id="api-toggle-key" aria-label="显示 API key" aria-pressed="false">显示</button></span></label>
       <div id="api-key-tools" hidden><div class="api-settings-actions"><button type="button" class="secondary" id="api-detect">🔍 自动识别服务商</button><button type="button" class="secondary" id="api-proxy-models">检查 key 并获取模型</button></div><p class="hint">粘贴时多余的空格、换行、引号或「Bearer 」前缀会自动去掉。识别和检查只读取模型列表，不生成图片、不扣费。</p><p id="api-key-result" role="status" aria-live="polite" style="overflow-wrap:anywhere"></p><label class="checkline" id="api-watermark-line"><input type="checkbox" id="api-watermark">保留服务商水印（不勾选则请求无水印图）</label><label class="checkline"><input type="checkbox" id="api-remember">在这台设备上记住配置（关闭标签页后仍可用；共享电脑请勿勾选）</label></div>
       <div id="api-models-diagnostic" hidden><button type="button" class="secondary" id="api-check-models">只读检查模型列表</button><p class="hint">仅在点击时使用当前表单中的 key，经本站固定 GET /api/sensenova/models 查询 SenseNova 模型 ID；不保存设置，不发送提示词、图片或生图请求。模型出现在列表中不代表拥有生图权限。</p><p id="api-models-result" role="status" aria-live="polite" style="overflow-wrap:anywhere"></p></div>
-      <div id="api-comfyui" hidden><label class="form-label">ComfyUI API workflow JSON<input id="api-workflow-file" type="file" accept="application/json,.json"></label><p id="api-workflow-status" role="status" aria-live="polite">尚未导入 workflow</p><p class="hint">请从 ComfyUI 导出 API 格式 workflow JSON 后导入。保存/导入不会联网；之后点生成时将原样提交 workflow，不会猜测并改写节点或自动映射当前表单提示词。暂不支持续改或矢量化。</p></div>
+      <div id="api-comfyui" hidden><label class="form-label">ComfyUI API workflow JSON<input id="api-workflow-file" type="file" accept="application/json,.json"></label><p id="api-workflow-status" role="status" aria-live="polite">尚未导入 workflow</p><p class="hint">请从 ComfyUI 导出 API 格式 workflow JSON 后导入。保存/导入不会联网；之后点生成时提交 workflow：其中的 {{prompt}} {{brand}} {{seed}} {{batch}} {{image}} 会替换成页面内容，其余原样运行。仓库 docs/comfyui-qwen-image-2.1-logo.json 是带占位符的示例。暂不支持续改或矢量化。</p></div>
       <div id="api-custom-paths"><label class="form-label">生成路径（必填）<input id="api-generate-path" placeholder="/generate"></label><label class="form-label">续改路径（可选，空白表示不支持）<input id="api-edit-path" placeholder="/edit"></label><label class="form-label">转换路径（可选，空白表示不支持）<input id="api-vectorize-path" placeholder="留空则禁用远端转换"></label><p class="hint">均相对于上面的服务前缀；后端必须实现仓库 API_INTEGRATION.md 中的自有 JSON 契约。返回栅格图片，不等同于真正 SVG 路径。</p></div>
       <div class="notice"><b>浏览器端安全边界</b><p id="api-transfer-note">SenseNova 同源模式下，API key 会通过 Authorization: Bearer 发给本站函数，再由函数固定透传至 token.sensenova.cn；本站函数不保存密钥、不记录请求内容，也不回显密钥。高级直连模式则发给填写的服务地址。提示词、品牌信息及使用的参考图 / 手稿 / 源图也会发送给该服务，可能产生费用。请核对域名与隐私政策。</p><p>配置仅存 sessionStorage（本标签页会话，刷新保留；浏览器恢复或复制标签页可能保留）。页面脚本、扩展或 XSS 可以读取 key，这不是服务器端保密。建议使用低额度临时 key，或自己的后端代理；不要在共享设备上保留。</p><p>同源代理不需要供应商为 API 请求开放浏览器 CORS；返回的外链图片仍需允许 CORS，代理不会代取任意图片 URL。高级直连服务也需允许 CORS。保存不测试连通性，不验证额度。生成失败不自动重试、不静默退回 demo。</p></div>
       <label class="checkline"><input type="checkbox" id="api-consent"><span id="api-consent-copy">我了解 key 与输入内容会发给所选服务，并确认该地址可信、可能计费。</span></label>
@@ -118,7 +118,10 @@
     let workflowJson = c.workflowJson || "";
     function workflowStatus() {
       if (!workflowJson) { q("#api-workflow-status").textContent = "尚未导入 workflow"; return; }
-      try { q("#api-workflow-status").textContent = "已导入 API workflow · " + Object.keys(JSON.parse(workflowJson)).length + " 个节点 · " + Math.ceil(new Blob([workflowJson]).size / 1024) + " KiB"; }
+      try {
+        const ph = ["prompt", "brand", "seed", "batch", "image"].filter((k) => workflowJson.includes("{{" + k + "}}"));
+        q("#api-workflow-status").textContent = "已导入 API workflow · " + Object.keys(JSON.parse(workflowJson)).length + " 个节点 · " + Math.ceil(new Blob([workflowJson]).size / 1024) + " KiB · " + (ph.length ? "占位符：" + ph.map((k) => "{{" + k + "}}").join(" ") : "无占位符，将原样运行");
+      }
       catch (_) { q("#api-workflow-status").textContent = "已保存的 workflow 无法解析，请重新导入。"; }
     }
     function protocol() {
@@ -143,7 +146,7 @@
         ? "仅允许本机地址，例如 http://127.0.0.1:8188；此处不会测试连接。浏览器可能限制 HTTPS 页面访问本地 HTTP。"
         : "填写服务商文档中的 API 前缀（需要 /v1 时请自行包含）。仅 HTTPS 或 localhost HTTP，不允许 URL 中包含密钥、账号、查询或片段。";
       q("#api-transfer-note").textContent = comfy
-        ? "ComfyUI 模式在点击生成时只向本机地址发送已导入的 workflow JSON 并由本机执行；当前页面中的品牌、提示词、参考图与模型不会自动写入或发送。workflow 自身包含的提示词、节点与路径则会交由本机 ComfyUI 处理。"
+        ? "ComfyUI 模式在点击生成时把已导入的 workflow 发送到本机执行。workflow 中的 {{prompt}} {{brand}} {{seed}} {{batch}} {{image}} 会替换为页面的提示词、品牌名、随机种子、张数和第一张参考图（先上传到本机 ComfyUI）；没有占位符则原样运行。"
         : multi
         ? "多服务商代理模式下，API key 通过 Authorization: Bearer 发给本站函数，再由函数只转发到所选服务商的固定官方地址（白名单，不可自定义）；本站函数不保存密钥、不记录请求内容，也不回显密钥。提示词、品牌信息及使用的参考图 / 手稿 / 源图也会发送给该服务商，可能产生费用。"
         : "SenseNova 同源模式下，API key 会通过 Authorization: Bearer 发给本站函数，再由函数固定透传至 token.sensenova.cn；本站函数不保存密钥、不记录请求内容，也不回显密钥。高级直连模式则发给填写的服务地址。提示词、品牌信息及使用的参考图 / 手稿 / 源图也会发送给该服务，可能产生费用。请核对域名与隐私政策。";
@@ -154,7 +157,7 @@
           q("#api-base-url").value = "http://127.0.0.1:8188";
         q("#api-model").value = "";
         q("#api-key").value = "";
-        q("#api-consent-copy").textContent = "我了解点击生成会把已导入的 workflow 原样发送到本机 ComfyUI，并由本机执行；当前页面提示词不会自动映射。";
+        q("#api-consent-copy").textContent = "我了解点击生成会把已导入的 workflow（含替换后的提示词与参考图）发送到本机 ComfyUI 执行。";
       } else {
         q("#api-consent-copy").textContent = "我了解 key 与输入内容会发给所选服务，并确认该地址可信、可能计费。";
       }
@@ -174,7 +177,7 @@
       q("#api-protocol-note").textContent = multi
         ? "请求经本站 Cloudflare 函数转发到所选服务商的官方地址（固定白名单，不能改成其他网址）。key 只随本次请求透传，不保存、不记录。生成多张时，对每次只能出 1 张的服务商会自动拆成多次请求（分别计费）。"
         : comfy
-        ? "本机 ComfyUI API：POST /prompt，轮询 /history/{prompt_id}，再从 /view 读取图片。导入的 API workflow 会原样提交；不推断模型、节点或 prompt 输入映射。当前不支持续改/矢量化。保存不会请求。"
+        ? "本机 ComfyUI API：POST /prompt，轮询 /history/{prompt_id}，再从 /view 读取图片。workflow 里的 {{prompt}} {{brand}} {{seed}} {{batch}} {{image}} 占位符会被替换，其余原样提交。当前不支持续改/矢量化。保存不会请求。"
         : proxy
         ? "固定转发至 https://token.sensenova.cn/v1 的 generations / edits；只读模型检查固定 GET /models。不支持自定义目标、模型或矢量化。每次 1–4 张，请求最多 20 MiB；PNG/JPEG/WebP 单图最多 8 MiB，最多 6 图。需要已部署同源函数；保存不会验证部署或编辑能力。"
         : custom

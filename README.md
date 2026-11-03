@@ -40,7 +40,7 @@ Graphic 是一个**本地优先**的网站。默认进入 Logo 创作，保留�
 4. 回到工具填写提示词/参考图，第一次点 **生成** 或 **编辑** 才会请求服务。失败不会默默回退 demo，也不会自动重试。
 5. 不再使用时点 **清除配置**；配置会清空并回到 demo。
 
-**ComfyUI 本机接口**：选择 `ComfyUI · 本机 API workflow`，地址填写 `http://127.0.0.1:8188`（或本机实际监听地址），再导入从 ComfyUI 导出的 **API 格式 workflow JSON**。导入与保存只在当前标签页校验和保存文件内容，不连接 ComfyUI；之后点生成才会把 workflow 原样提交并轮询历史、读取图片。项目不会猜测模型/节点，也不会把当前页面的品牌、提示词或参考图自动映射进 workflow；因此需要用户提供并导入适用于目标工作流的 API JSON。只有 workflow 内已有的提示词和节点参数会运行。此模式目前只支持生成，不支持续改或矢量化。若站点使用 HTTPS，浏览器访问本机 `http://127.0.0.1:8188` 可能被本地网络权限、混合内容或 ComfyUI 的 CORS 设置拦截；仓库提供配置框架，不保证已在所有浏览器环境连通。
+**ComfyUI 本机接口**：选择 `ComfyUI · 本机 API workflow`，地址填写 `http://127.0.0.1:8188`（或本机实际监听地址），再导入从 ComfyUI 导出的 **API 格式 workflow JSON**。导入与保存只在当前标签页校验和保存文件内容，不连接 ComfyUI；之后点生成才会把 workflow 原样提交并轮询历史、读取图片。项目不猜节点：workflow 里写了 `{{prompt}}` `{{brand}}` `{{seed}}` `{{batch}}` `{{image}}` 占位符的位置会被替换为页面内容，其余原样运行（示例见 `docs/comfyui-qwen-image-2.1-logo.json`）。此模式目前只支持生成，不支持续改或矢量化。若站点使用 HTTPS，浏览器访问本机 `http://127.0.0.1:8188` 可能被本地网络权限、混合内容或 ComfyUI 的 CORS 设置拦截；仓库提供配置框架，不保证已在所有浏览器环境连通。
 
 配置只放在当前标签页的 `sessionStorage`：刷新通常保留，关闭标签页通常清除；浏览器的“恢复标签页”或复制标签页可能恢复或复制会话数据，因此不要把它当作密钥保险箱。key 仍能被页面脚本、浏览器扩展或 XSS 读取。建议使用低额度、短期 key，或使用自己的后端代理；绝不要把 key 写入源文件、作品、日志或仓库。
 
@@ -97,8 +97,24 @@ Graphic 是一个**本地优先**的网站。默认进入 Logo 创作，保留�
 | workflow | 在 ComfyUI 里用「导出 (API)」得到的 **API 格式 JSON**，≤ 2 MiB、≤ 5,000 节点 |
 | 模型 / key | 不需要，由 workflow 决定 |
 
-点生成时页面把 workflow 原样提交到 `POST /prompt`，轮询 `/history/{id}`，再从 `/view` 取图。注意：
-- 页面的品牌名、提示词、参考图**不会**自动写进 workflow，出图内容完全由 workflow 本身决定。
+点生成时页面把 workflow 提交到 `POST /prompt`，轮询 `/history/{id}`，再从 `/view` 取图。
+
+**占位符**：在 workflow JSON 里写下面的占位符，网站提交前会替换；没有占位符就原样运行。
+
+| 占位符 | 写在哪里 | 替换成 |
+|---|---|---|
+| `{{prompt}}` | 正向提示词节点的 text / prompt | 与云端相同的英文提示词（品牌名 + 风格 + 主色 + 补充描述） |
+| `{{brand}}` | 任意文本 | 品牌名原文 |
+| `{{seed}}` | KSampler 的 seed（整个值就是占位符） | 每次随机整数 |
+| `{{batch}}` | EmptyLatentImage 的 batch_size | 生成张数（1–4） |
+| `{{image}}` | LoadImage 的 image | 第一张参考图：先 `POST /upload/image` 上传到本机，再填文件名；没传参考图会提示 |
+
+**现成示例**（在 ComfyUI 里确认模型文件名与你本机一致）：
+- `docs/comfyui-qwen-image-2.1-logo.json`：Qwen Image 2.1 文生图，1:1 画布。
+- `docs/comfyui-qwen-image-2.1-logo-ref.json`：同上，再带一张参考图（`{{image}}`）。
+- `docs/comfyui-qwen-image-logo.json`：Qwen-Image（第一代）文生图。
+
+注意：
 - 只支持生成，不支持续改、矢量化。
 - 启动 ComfyUI 时需允许页面来源跨域，例如 `python main.py --enable-cors-header "*"`（或指定你的站点域名）。HTTPS 线上站访问本机 HTTP 可能被浏览器的混合内容 / 本地网络权限拦截；本地用 `python -m http.server` 打开页面最容易连通。
 
@@ -282,6 +298,7 @@ graphic-site/
 node scripts/check-catalog.cjs
 node scripts/test-api.cjs
 node scripts/test-api-settings.cjs
+node scripts/test-comfy-placeholders.cjs
 node scripts/test-api-errors.cjs
 node scripts/test-sensenova-proxy.cjs
 # 以下浏览器测试需先启动静态服务器（默认 4206 端口）
