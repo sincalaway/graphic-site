@@ -196,7 +196,7 @@
       COMFYUI_HTTP_ERROR: ["ComfyUI 请求失败", "本机 ComfyUI 返回 HTTP 错误。", "检查 ComfyUI API 状态与导入 workflow；页面不会显示响应正文。"],
       COMFYUI_INVALID_RESPONSE: ["ComfyUI 响应格式无效", "没有收到可识别的 ComfyUI API 响应。", "确认地址指向 ComfyUI 服务且已导入 API 格式 workflow JSON。"],
       COMFYUI_WORKFLOW_FAILED: ["ComfyUI workflow 执行失败", "本机 ComfyUI 报告 workflow 未完成。", "请在 ComfyUI 查看节点执行错误；本页面不读取或展示错误详情。"],
-      COMFYUI_NEEDS_IMAGE: ["需要参考图", "导入的 workflow 含 {{image}} 占位符，但这次没有上传参考图。", "先在细节页上传一张参考图，或换用不含 {{image}} 的 workflow。"],
+      COMFYUI_NEEDS_IMAGE: ["需要参考图", "导入的 workflow 含 {{image}} 占位符，但没有参考图，也没能读取空白画布。", "上传一张参考图后再试，或换用不含 {{image}} 的 workflow。"],
       COMFYUI_NEEDS_IMAGE_SLOT: ["workflow 用不上这张图", "导入的 workflow 没有 {{image}} 占位符，手稿或上传图不会被读取。", "改用带参考图的 workflow（如 docs/comfyui-qwen-image-2.1-logo-ref.json），或在 LoadImage 的 image 填 {{image}}。"],
       COMFYUI_NO_OUTPUT: ["workflow 没有可用图片输出", "ComfyUI 已完成，但历史结果中没有可读取的图片。", "确认导入的 API workflow 包含图片保存/输出节点；需要为目标 workflow 单独确认节点映射。"],
       PROXY_EDIT_UNSUPPORTED: ["该服务商不支持参考图", "所选服务商只支持文生图。", "去掉参考图 / 手稿后再生成，或在「配置 API」换一个支持编辑的服务商（如 SenseNova、豆包 Seedream、硅基流动 Edit 模型）。"],
@@ -554,11 +554,17 @@
     var used = comfyPlaceholders(s.workflowJson);
     if (used.length && input) {
       var image = input.sourceImage || (Array.isArray(input.references) && input.references[0]) || "";
-      if (used.indexOf("image") >= 0 && !image)
-        throw new ApiError("COMFYUI_NEEDS_IMAGE", "此 workflow 需要参考图");
+      var blank = false;
+      // One workflow serves both Logo (no image) and Sketch (image): with no image, the {{image}}
+      // slot gets a blank white canvas and the prompt says to draw from scratch.
+      if (used.indexOf("image") >= 0 && !image) {
+        image = await blankCanvas(signal);
+        blank = true;
+        if (!image) throw new ApiError("COMFYUI_NEEDS_IMAGE", "此 workflow 需要参考图");
+      }
       var count = Number(input.count) || 1;
       workflow = fillComfy(workflow, {
-        prompt: promptFor(input),
+        prompt: promptFor(input) + (blank ? "\nThe attached image is a blank white canvas: draw the complete new logo on it from scratch." : ""),
         brand: text(input.brand).trim(),
         seed: Math.floor(Math.random() * 4294967295),
         batch: Math.max(1, Math.min(4, count)),

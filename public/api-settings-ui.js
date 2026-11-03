@@ -49,6 +49,32 @@
             : "此协议不支持或未配置该操作；可在「管理 API」切回 demo"
           : "本地演示 · 不扣费";
     }
+    const comfy = remote && s.protocol === "comfyui-api";
+    document.querySelectorAll(".quick-workflow").forEach((wrow) => {
+      wrow.classList.toggle("hidden", !comfy);
+      if (!comfy) return;
+      const json = GraphicAPISettings.get().workflowJson || "";
+      wrow.querySelector(".quick-workflow-status").textContent = !json ? "尚未导入"
+        : /\{\{image\}\}/.test(json) ? "已导入 · 含 {{image}}，Logo 与手稿通用"
+        : "已导入 · 无 {{image}}，手稿不可用";
+      const file = wrow.querySelector(".quick-workflow-file");
+      wrow.querySelector(".quick-workflow-button").onclick = () => file.click();
+      file.onchange = async (event) => {
+        const f = event.target.files && event.target.files[0];
+        event.target.value = "";
+        if (!f) return;
+        try {
+          if (f.size > 2 * 1024 * 1024) throw new Error("ComfyUI API workflow 不能超过 2 MiB");
+          const raw = await f.text();
+          GraphicAPISettings.validateWorkflow(raw);
+          GraphicAPISettings.save({ ...GraphicAPISettings.get(), workflowJson: raw });
+          refresh();
+          toast("已导入 workflow：" + f.name);
+        } catch (error) {
+          toast("未导入：" + (error.message || "workflow 格式无效"));
+        }
+      };
+    });
     const row = q("#quick-model-row"), menu = q("#quick-model");
     const prov = remote && s.protocol === "multi-proxy" && window.GraphicImageProviders ? GraphicImageProviders.get(s.provider) : null;
     if (row && menu) {

@@ -23,6 +23,7 @@ sample["12"] = { class_type: "Note", inputs: { text: "brand={{brand}}" } };
 s.save({ enabled: true, protocol: "comfyui-api", baseUrl: "http://127.0.0.1:8188", workflowJson: JSON.stringify(sample), generatePath: "/prompt" });
 let submitted = null, uploaded = 0;
 c.fetch = async (url, o = {}) => {
+  if (url.endsWith("/assets/blank-canvas.png")) { const b = fs.readFileSync(root + "/assets/blank-canvas.png"); return { ok: true, status: 200, arrayBuffer: async () => b.buffer.slice(b.byteOffset, b.byteOffset + b.length) }; }
   if (url.endsWith("/upload/image")) { uploaded++; assert.ok(o.body instanceof FormData); return { ok: true, status: 200, json: async () => ({ name: "ref.png", subfolder: "graphic", type: "input" }) }; }
   if (url.endsWith("/prompt")) { submitted = JSON.parse(o.body).prompt; return { ok: true, status: 200, json: async () => ({ prompt_id: "p1" }) }; }
   if (url.includes("/history/")) return { ok: true, status: 200, json: async () => ({ p1: { outputs: { "10": { images: [{ filename: "o.png", subfolder: "", type: "output" }] } } } }) };
@@ -39,10 +40,15 @@ c.fetch = async (url, o = {}) => {
   assert.equal(submitted["11"].inputs.image, "graphic/ref.png");
   assert.equal(submitted["12"].inputs.text, "brand=Nova");
   assert.equal(submitted["8"].inputs.steps, 20);
-  // {{image}} without any reference → clear error, nothing submitted
+  // {{image}} without any reference → blank canvas is uploaded, so one workflow serves Logo and Sketch
   submitted = null;
-  await assert.rejects(api.generate({ tool: "logo", brand: "Nova", styleIndex: 0, count: 1 }), (e) => e.code === "COMFYUI_NEEDS_IMAGE");
-  assert.equal(submitted, null);
+  await api.generate({ tool: "logo", brand: "Nova", styleIndex: 0, count: 1 });
+  assert.equal(uploaded, 2);
+  assert.match(submitted["5"].inputs.text, /blank white canvas/);
+  // a sketch fills the same slot with the drawing
+  await api.generate({ tool: "sketch", brand: "Nova", sourceImage: png, count: 1 });
+  assert.equal(uploaded, 3);
+  assert.doesNotMatch(submitted["5"].inputs.text, /blank white canvas/);
   console.log("ComfyUI placeholder tests passed");
 })().catch((e) => { console.error(e); process.exit(1); });
 // A sketch (sourceImage) with a workflow that has no {{image}} slot must not run silently.
