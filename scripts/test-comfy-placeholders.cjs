@@ -45,3 +45,12 @@ c.fetch = async (url, o = {}) => {
   assert.equal(submitted, null);
   console.log("ComfyUI placeholder tests passed");
 })().catch((e) => { console.error(e); process.exit(1); });
+// A sketch (sourceImage) with a workflow that has no {{image}} slot must not run silently.
+(async () => {
+  await new Promise((r) => setTimeout(r, 300));
+  s.save({ enabled: true, protocol: "comfyui-api", baseUrl: "http://127.0.0.1:8188", workflowJson: JSON.stringify({ "1": { class_type: "CLIPTextEncode", inputs: { text: "{{prompt}}" } } }), generatePath: "/prompt" });
+  let posted = false; c.fetch = async () => { posted = true; throw new Error("no network expected"); };
+  await assert.rejects(api.generate({ tool: "sketch", sourceImage: png, count: 1 }), (e) => e.code === "COMFYUI_NEEDS_IMAGE_SLOT");
+  assert.equal(posted, false);
+  console.log("ComfyUI sketch slot test passed");
+})().catch((e) => { console.error(e); process.exit(1); });
