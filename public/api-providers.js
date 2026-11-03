@@ -22,7 +22,7 @@
       keyHint: "格式为 id.secret（中间有一个点）；仅支持文生图" },
     { id: "modelscope", label: "魔搭 ModelScope", maxN: 1, edit: true, models: true, async: true,
       keyUrl: "https://modelscope.cn/my/myaccesstoken",
-      suggested: ["Qwen/Qwen-Image", "Tongyi-MAI/Z-Image-Turbo", "Qwen/Qwen-Image-Edit-2509"],
+      suggested: ["Qwen/Qwen-Image", "Tongyi-MAI/Z-Image-Turbo", "Qwen/Qwen-Image-Edit-2509", "briaai/Fibo-2.0-edit-turbo"],
       keyHint: "ms- 开头的访问令牌；账号需先绑定阿里云并实名。出图是排队任务，页面会自动等待结果" },
     { id: "openai", label: "OpenAI Images", maxN: 4, edit: true, models: true,
       keyUrl: "https://platform.openai.com/api-keys", suggested: ["gpt-image-1", "gpt-image-1-mini", "dall-e-3"],
