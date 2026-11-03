@@ -260,30 +260,54 @@
   function text(v) {
     return v === undefined || v === null ? "" : String(v);
   }
+  // Concrete visual language for each style card (index = assets/style-N.png). A bare style name such as
+  // "极简" leaves text-to-image models guessing, so every request spells the look out in words.
+  var STYLE_GUIDE = [
+    "minimalist flat logo: one bold solid shape built from simple geometry, smart negative space, single color (black or the brand color), no gradients, no shadows, no texture, reads clearly at 16 px",
+    "geometric line logo: clean monoline strokes, precise geometric construction such as triangles, impossible figures or interlocking lines, strong symmetry and order, black line art",
+    "vibrant gradient logo: bold letterform or mark filled with smooth overlapping multicolor gradients (pink, orange, yellow, green, blue, purple), translucent layered facets, modern and glossy",
+    "mascot logo: friendly character or animal head emblem, bold dark outlines, flat colors with simple faceted shading, expressive and memorable, sports-badge feel",
+    "hand-drawn logo: organic botanical illustration with watercolor or ink texture, loose brush strokes, soft natural greens, an imperfect hand-painted circle or frame",
+    "luxury logo: elegant thin gold lines with metallic gold gradient, refined flowing curves, graceful silhouette, generous whitespace, premium and restrained",
+    "retro vintage badge logo: circular or shield emblem with ribbon banner, bold slab or serif lettering with the brand name set along the circle or on the ribbon, muted vintage colors (cream, charcoal, orange), classic heritage feel",
+    "tech logo: angular futuristic mark with pixel blocks or circuit-like cuts, electric blue to indigo gradient, sharp precise edges, digital and innovative",
+    "Chinese style logo: Chinese calligraphy brush strokes or a seal/ink motif, ink-wash black with a touch of cinnabar red, Eastern aesthetics such as mountains, water ripples or clouds, modern and tasteful",
+    "cute logo: round chubby shapes and a kawaii character with big simple eyes, playful thick dark outlines, soft cheerful colors, friendly and lovable",
+  ];
+  var TOOL_BRIEF = {
+    logo: "Design a professional brand logo.",
+    appicon: "Design a square mobile app icon: one centered bold symbol on a full-bleed background, no text unless asked, no device frame or mockup.",
+    sketch: "Turn the provided hand-drawn sketch into a polished, professional logo, keeping its main shape and idea.",
+    mockup: "Place the provided logo naturally into a photorealistic brand mockup scene. Keep the logo unchanged.",
+    vectorizer: "Redraw the provided image as a clean flat vector-style graphic with solid colors.",
+  };
+  function colorName(hex) {
+    var n = parseInt(hex.slice(1), 16), R = (n >> 16) & 255, G = (n >> 8) & 255, B = n & 255;
+    var max = Math.max(R, G, B), min = Math.min(R, G, B), l = (max + min) / 510, d = max - min;
+    if (d < 24) return l > 0.9 ? "white" : l < 0.15 ? "black" : l > 0.6 ? "light gray" : "dark gray";
+    var h = max === R ? ((G - B) / d + 6) % 6 : max === G ? (B - R) / d + 2 : (R - G) / d + 4;
+    var hue = ["red", "orange", "yellow", "yellow-green", "green", "teal", "cyan", "sky blue", "blue", "indigo", "purple", "magenta", "pink"][Math.round(h * 2) % 12];
+    if (hue === "orange" && l < 0.4) hue = "brown";
+    return (l < 0.3 ? "deep " : l > 0.75 ? "light " : "") + hue;
+  }
   function promptFor(r) {
-    var labels = {
-      tool: "工具",
-      brand: "品牌",
-      concept: "概念",
-      style: "风格",
-      styleIndex: "风格编号",
-      color: "主色",
-      subtitle: "副标题",
-      description: "补充描述",
-      platform: "平台",
-      scene: "场景",
-      intelligence: "智能档位",
-    };
-    return (
-      Object.keys(labels)
-        .map(function (k) {
-          return labels[k] + ": " + text(r[k]);
-        })
-        .filter(function (x) {
-          return x.slice(x.indexOf(":") + 2);
-        })
-        .join("\n") + "\n请生成符合以上全部输入的设计方案。"
-    );
+    var lines = [TOOL_BRIEF[r.tool] || TOOL_BRIEF.logo];
+    var brand = text(r.brand).trim();
+    if (brand && r.tool !== "mockup" && r.tool !== "vectorizer")
+      lines.push(r.tool === "appicon" ? "App name: " + brand + " (for context; do not write it on the icon unless asked)." : 'Brand name: "' + brand + '". Render the name exactly as written, spelled correctly.');
+    if (text(r.subtitle).trim()) lines.push('Tagline under the name: "' + text(r.subtitle).trim() + '".');
+    if (text(r.concept).trim()) lines.push("What the brand/app is about (context only, never write this text in the image): " + text(r.concept).trim());
+    var guide = Number.isInteger(r.styleIndex) ? STYLE_GUIDE[r.styleIndex] : "";
+    if (guide) lines.push("Style (" + text(r.style) + "): " + guide + ". Follow this style strictly.");
+    else if (text(r.style).trim() && text(r.style).trim() !== "不指定") lines.push("Style: " + text(r.style).trim());
+    if (/^#[0-9a-f]{6}$/i.test(text(r.color))) lines.push((r.tool === "appicon" ? "Icon background color: " : "Primary brand color: ") + colorName(r.color) + " (hex " + r.color + "; never write the hex code in the image).");
+    if (r.platform) lines.push("Platform: " + r.platform + ".");
+    if (r.scene) lines.push("Mockup scene: " + r.scene + ".");
+    if (text(r.description).trim()) lines.push("Extra requirements: " + text(r.description).trim());
+    if (r.tool === "logo" || r.tool === "sketch")
+      lines.push("Flat vector logo isolated on a pure white (#FFFFFF) background, centered, crisp edges. " + (brand && r.tool === "logo" ? "The only text allowed is the brand name" + (text(r.subtitle).trim() ? " and tagline" : "") + "; no other words, letters or numbers." : "No words or letters unless asked.") + " No mockup, no photo, no watermark.");
+    else if (r.tool === "appicon") lines.push("Flat vector icon art filling the whole square canvas, crisp edges, no rounded-corner mask, no watermark.");
+    return lines.join("\n");
   }
   function imageType(type) {
     return /^image\/(png|jpeg|webp|gif|avif)$/i.test(type || "");
@@ -719,7 +743,7 @@
       var styleRef = await styleReference(raw, signal);
       if (styleRef) {
         job.images = [styleRef];
-        job.payload.prompt += "\n参考图仅用于参考「" + text(raw.style || "所选") + "」风格的造型语言、配色和质感；不要照搬其中的图形，请为上述品牌重新设计。";
+        job.payload.prompt += "\nThe attached image is only a style example: borrow its visual language, color treatment and finish, but do not copy its shape or letters; design a new mark for this brand.";
       }
     }
     if (op === "edit" && !job.images.length)
